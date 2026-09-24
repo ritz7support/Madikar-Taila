@@ -10,7 +10,6 @@ const API_VERSION=Deno.env.get("WHATSAPP_API_VERSION")??"v25.0";
 const CATALOG_ID=Deno.env.get("WHATSAPP_CATALOG_ID")??"1515875913870520";
 const POPULAR_PRODUCT_SET_ID="1027827043551409";
 const CATALOG_THUMBNAIL_PRODUCT_ID="sdedto6u1x";
-const OIL_PRODUCT_IDS=["sdedto6u1x","5wovdlm67j"];
 const RAZORPAY_MODE=(Deno.env.get("RAZORPAY_MODE")??"test").toLowerCase();
 const RAZORPAY_KEY_ID=Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_ID":"RAZORPAY_TEST_KEY_ID");
 const RAZORPAY_KEY_SECRET=Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_SECRET":"RAZORPAY_TEST_KEY_SECRET");
@@ -272,10 +271,6 @@ async function getPopularProductsFromSet(){
 async function popularProducts(to:string){
   const products=await getPopularProductsFromSet();
   return sendProductList(to,"Popular products","Choose from our most popular products.",products.map((p:any)=>String(p.retailer_id).trim()));
-}
-
-async function viewOil(to:string){
-  return sendProductList(to,"View oil","Choose the oil you would like to order.",OIL_PRODUCT_IDS);
 }
 
 function isExpectedWebhook(change:any){
@@ -623,7 +618,6 @@ Deno.serve(async(req:Request)=>{
             if(payload==="settings"||text==="settings")await updatePersonalInfo(waId,`update-profile:${waId}:${crypto.randomUUID()}`);
             if(isFullCatalogueAction(payload)||isFullCatalogueAction(text))await fullCatalogue(waId);
             if(payload==="popular_products"||payload==="popular_oil_products"||text==="popular products"||text==="popular oil products")await popularProducts(waId);
-            if(payload==="view_oil"||text==="view oil")await viewOil(waId);
           }
 
           if(m.type==="interactive"&&m.interactive?.type==="button_reply"){
@@ -633,7 +627,6 @@ Deno.serve(async(req:Request)=>{
             if(id==="place_new_order"||id==="place_order"||id==="place_an_order"||title==="place a new order")await placeNewOrder(waId);
             if(isFullCatalogueAction(id)||isFullCatalogueAction(title))await fullCatalogue(waId);
             if(id==="popular_products"||id==="popular_oil_products"||title==="popular products"||title==="popular oil products")await popularProducts(waId);
-            if(id==="view_oil"||title==="view oil")await viewOil(waId);
             if(id==="settings"||title==="settings")await updatePersonalInfo(waId,`update-profile:${waId}:${crypto.randomUUID()}`);
           }
         }
