@@ -6,15 +6,17 @@ Last updated: 24 September 2026 (night).
 The GitHub repo (`cursor/production-hardening` branch, one merge away from `main`, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth and are kept in sync — the branch has been confirmed byte-for-byte identical to the deployed function source after every change this session. Treat a mismatch between them as a bug to investigate, not something to silently paper over.
 
 Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
-- whatsapp-webhook v87
+- whatsapp-webhook v88
 - whatsapp-flow v47
-- razorpay-webhook v27
+- razorpay-webhook v28
 - sync-meta-catalog v8
 - retry-order-handoffs v3
 
 (Platform version counters drift upward without content changes on some of these — confirmed via `download` + `git diff` showing zero diff. Content parity is the signal that matters, not the raw number.)
 
-Order creation (`whatsapp-webhook`) and payment→order advancement (`razorpay-webhook`) are now atomic via three Postgres RPC functions added in migration `20260924155516_add_transactional_order_and_payment_rpcs.sql` (`create_order_with_items`, `advance_order_to_processing`, `mark_payment_paid_and_advance_order`), closing the "transactional order creation + self-healing payment webhook" item from the outstanding-work list. **Not yet exercised by a real WhatsApp order + real Razorpay payment** — do that before further changes.
+Order creation (`whatsapp-webhook`) and payment→order advancement (`razorpay-webhook`) are atomic via three Postgres RPC functions added in migration `20260924155516_add_transactional_order_and_payment_rpcs.sql` (`create_order_with_items`, `advance_order_to_processing`, `mark_payment_paid_and_advance_order`) — **live-tested successfully** on a real test order (24 Sep night), clean end-to-end.
+
+Payment link + `order_details` expiry is now ~16 minutes (was 24h), matching Razorpay's 15-minute floor with a small margin; `razorpay-webhook` now handles `payment_link.expired`/`cancelled` (migration `20260924181608_add_expired_at_to_payments.sql`). **Not yet exercised by a real expired/cancelled payment link** — do that before further changes.
 
 `meta-catalog-webhook` has been deleted (catalog sync is now manual-only).
 
