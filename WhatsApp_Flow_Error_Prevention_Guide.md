@@ -50,7 +50,7 @@ Automatic sync via `meta-catalog-webhook` has been **retired** (function deleted
 - Meta's product `url` field is stored as `Product.product_link` — do not request `link`, the API contract provides `url`.
 - `sync-meta-catalog` follows pagination and performs batched upserts (by `(catalog_id, retailer_id)`), then removes stale local products for the configured catalog after a successful full retrieval.
 - `Product` stores `name, retailer_id, description, product_link, catalog_id`. Transaction price is never stored here.
-- **Not yet fixed**: if Meta legitimately returns zero products, the current stale-deletion logic would remove every local product for that catalog. Needs a safety condition (e.g. only delete if the retrieval both succeeded and returned a non-trivial count) before this is fully safe. The delete filter also builds `retailer_id.eq.<id>` inside an `or=(...)` expression without quoting — untested against IDs containing PostgREST-reserved characters (`,` `.` `:` `(` `)`); current IDs are plain alphanumeric so this hasn't bitten yet, but it's worth quoting defensively.
+- **Fixed 24 Sep evening (v6)**: if Meta returns zero products, `sync-meta-catalog` now skips the stale-deletion step entirely (logs a warning and returns `{"cleanup_skipped":"empty_meta_response"}`) instead of removing every local product for that catalog. The delete filter also now double-quotes each `retailer_id` inside the `or=(...)` expression via a `quotePgFilterValue()` helper (escaping embedded `"`/`\`), defensively guarding against PostgREST-reserved characters (`,` `.` `:` `(` `)`) even though current IDs are plain alphanumeric.
 
 ## 9. Supabase safety lessons
 
@@ -73,6 +73,8 @@ n8n returned `503 {"code":503,"message":"Database is not ready!"}` on the first 
 
 This is a good general pattern for adding any new validation to a function Meta calls directly: log-first, enforce-second, confirmed live before either step.
 
+**Update, 24 Sep evening**: flipped `FLOW_SIGNATURE_MODE` to `enforce` (secret update only, no redeploy) after confirming `valid:true` on the last 50 real Flow requests logged (~3 hours of real traffic), zero `valid:false`. Invalid signatures now get HTTP 432 instead of just a log line.
+
 ## 12. Region/latency lesson (new, 23–24 Sep)
 
 Edge Functions run in whichever region is closest to the *caller* by default. Meta calls from US-based infrastructure, so `whatsapp-webhook`/`whatsapp-flow` were running in `us-east-1`/`us-east-2`/`us-west-2` while the database is in `ap-south-1` (Mumbai) — every database round-trip was crossing the Pacific and back. Fix: append `?forceFunctionRegion=ap-south-1` to the webhook/Flow endpoint URLs configured in the Meta App Dashboard. `razorpay-webhook` didn't need this — Razorpay calls from India already. Cut the slowest customer-facing step (review-and-pay) from ~5.9s to ~3.6s. Remaining latency is now dominated by external API calls (Meta, Razorpay), confirmed via per-call timing logs added to `whatsapp-webhook`.
@@ -86,16 +88,17 @@ Edge Functions run in whichever region is closest to the *caller* by default. Me
 | `v25.0` | Graph API version | `WHATSAPP_API_VERSION` |
 | `1027827043551409` | "Popular products" Meta product set | none |
 | `sdedto6u1x` (Almond Oil) | Full-catalogue thumbnail | none |
-| `sdedto6u1x`, `5wovdlm67j` | "View oil" product IDs | none — **dead code, unreachable, safe to delete** |
+| `sdedto6u1x`, `5wovdlm67j` | "View oil" product IDs | **removed 24 Sep evening (v83)** — `viewOil()`/`OIL_PRODUCT_IDS` and both dead call sites deleted from `whatsapp-webhook` |
 | `https://wa.me/919972267897` | Razorpay post-payment callback | none |
 | `registration`, `update_personal_info`, `place_new_order`, `full_catalogue`, `address` (lang `en`) | WhatsApp template names | must match approved templates in the production WABA |
 
-## 14. Current production baseline (24 Sep 2026)
+## 14. Current production baseline (24 Sep 2026, evening)
 
-- `whatsapp-webhook` v82, `whatsapp-flow` v43, `razorpay-webhook` v24, `sync-meta-catalog` v5, `retry-order-handoffs` v1.
+- `whatsapp-webhook` v83, `whatsapp-flow` v44, `razorpay-webhook` v24, `sync-meta-catalog` v6, `retry-order-handoffs` v1.
+- `FLOW_SIGNATURE_MODE` is now `enforce` (was `log`).
 - Address Flow JSON v7.3 (unchanged, protected).
 - Both functions Meta calls directly pinned to `ap-south-1`.
-- `main` branch of the GitHub repo confirmed byte-identical to deployed source.
+- `cursor/production-hardening` branch of the GitHub repo confirmed byte-identical to deployed source (one merge behind having this become `main`).
 
 ## 15. Regression checklist
 

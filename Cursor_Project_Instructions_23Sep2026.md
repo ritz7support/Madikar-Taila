@@ -6,10 +6,10 @@ Last updated: 24 September 2026.
 The GitHub repo (`main` branch, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are now both source of truth and are kept in sync — `main` has been confirmed byte-for-byte identical to the deployed function source. Treat a mismatch between them as a bug to investigate, not something to silently paper over.
 
 Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
-- whatsapp-webhook v82
-- whatsapp-flow v43
+- whatsapp-webhook v83
+- whatsapp-flow v44
 - razorpay-webhook v24
-- sync-meta-catalog v5
+- sync-meta-catalog v6
 - retry-order-handoffs v1
 
 `meta-catalog-webhook` has been deleted (catalog sync is now manual-only).
@@ -62,7 +62,7 @@ Do not reintroduce Order history unless explicitly requested.
 - `public.payments`: RLS **enabled** (fixed 23 Sep). `anon`/`authenticated` have **zero** privileges on any `public` table, including future ones (default privileges revoked too).
 - `Product`/`Profile`/`orders`/`order_items`/`addresses`: RLS enabled, no policies (correct while only the service-role key touches these tables).
 - Function search_path fixed on the two `updated_at` trigger functions.
-- `whatsapp-flow` now checks Meta's request signature on Flow endpoint calls (`FLOW_SIGNATURE_MODE=log` currently — logs but doesn't reject; flip to `enforce` once confident, no redeploy needed).
+- `whatsapp-flow` checks Meta's request signature on Flow endpoint calls (`FLOW_SIGNATURE_MODE=enforce` as of 24 Sep evening — rejects invalid signatures with HTTP 432; flipped after confirming `valid:true` on 50 consecutive real requests).
 - Leaked-password protection is disabled — irrelevant until a staff front-end with real logins exists.
 - No signed/authenticated flow tokens yet — this is the main remaining security gap (see handoff doc §9/§14).
 

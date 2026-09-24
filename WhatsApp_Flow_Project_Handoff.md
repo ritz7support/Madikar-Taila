@@ -1,6 +1,6 @@
 # WhatsApp Flow App — Project Handoff
 
-Last updated: 24 September 2026. Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
+Last updated: 24 September 2026 (evening — see §14 for the three items closed this session). Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
 
 ## 1. Source-of-truth rules
 
@@ -42,12 +42,12 @@ Last updated: 24 September 2026. Supersedes `WhatsApp_Flow_Project_Handoff_Septe
 
 ## 5. Current deployed Edge Functions
 
-| Function | Version (as of 24 Sep) | verify_jwt | Purpose |
+| Function | Version (as of 24 Sep evening) | verify_jwt | Purpose |
 |---|---|---|---|
-| `whatsapp-webhook` | v82 | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. |
-| `whatsapp-flow` | v43 | false | Flow INIT/data_exchange endpoint for the Address Flow and the shared registration/Settings Flow. Now checks Meta's signature (see §9). |
+| `whatsapp-webhook` | v83 | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. `viewOil`/`OIL_PRODUCT_IDS` dead code removed (v83). |
+| `whatsapp-flow` | v44 | false | Flow INIT/data_exchange endpoint for the Address Flow and the shared registration/Settings Flow. Checks Meta's signature — now in **`enforce`** mode (see §9). Dead `UPDATE_PROFILE` `data_exchange` handler removed (v44); the `INIT` pre-fill path is unchanged. |
 | `razorpay-webhook` | v24 | false | Verifies Razorpay signature, processes `payment_link.paid`, updates payment/order state, schedules `order_status` + n8n handoff. |
-| `sync-meta-catalog` | v5 | true | Pulls the full Meta catalog into `public.Product`. Now **manually triggered only** (see §6). |
+| `sync-meta-catalog` | v6 | true | Pulls the full Meta catalog into `public.Product`. Manually triggered only (see §6). Now guarded against wiping the local catalog on an empty Meta response (v6), and quotes `retailer_id` defensively inside the stale-cleanup `or=(...)` filter. |
 | `retry-order-handoffs` | v1 | false | Called every 5 minutes by `pg_cron`; resends any due n8n order handoff. Can't do anything except resend what's already due, so it's safe without JWT auth. |
 
 `meta-catalog-webhook` has been **deleted** (dashboard + `WHATSAPP_CATALOG_VERIFY_TOKEN` secret removed). The two test-only functions mentioned in older docs (`whatsapp-flow-key-register-test`, `test-order-status`) no longer exist.
@@ -96,11 +96,11 @@ WhatsApp cart → pending_payment order + order_items
 
 - **Registration** never calls `whatsapp-flow`. The registration template opens the Flow, and the submitted answers arrive at `whatsapp-webhook` as an `nfm_reply` message, which creates/updates the `Profile` row and sends the main menu.
 - **Settings → Update Personal Information** reuses the *same* Flow. It calls `whatsapp-flow`'s `INIT` action once, to pre-fill the current name/email (token `update-profile:<wa_id>:<uuid>`), but the **save** still happens through the `nfm_reply` path on `whatsapp-webhook`, exactly like registration.
-- Because of that, `whatsapp-flow` has an `UPDATE_PROFILE` `data_exchange` handler that appears to be **dead code** — it was used briefly on 21 Sep but not since. Not yet removed; low priority now that the signature check is in place, but worth cleaning up.
-- `whatsapp-flow` now checks Meta's `X-Hub-Signature-256` (using `WHATSAPP_APP_SECRET`) on every request and logs `{"valid":true/false,"mode":...}`. Controlled by the `FLOW_SIGNATURE_MODE` secret:
-  - `"log"` (current) — checks and logs, never rejects.
-  - `"enforce"` — rejects invalid signatures with HTTP 432, no redeploy needed to flip.
-  - Confirmed `valid:true` on every real Flow request seen so far (INIT/data_exchange/ping across registration, Settings, and Address Flow). **Ready to flip to `enforce`.**
+- The `UPDATE_PROFILE` `data_exchange` handler in `whatsapp-flow` that appeared to be dead code (used briefly on 21 Sep, not since) has been **removed** (v44, 24 Sep evening). The `INIT` pre-fill path for `update-profile:<wa_id>:<uuid>` tokens is untouched — only the never-hit `data_exchange` save branch was deleted. Verified via `git diff` after re-download that the deployed source now matches the trimmed repo copy.
+- `whatsapp-flow` checks Meta's `X-Hub-Signature-256` (using `WHATSAPP_APP_SECRET`) on every request and logs `{"valid":true/false,"mode":...}`. Controlled by the `FLOW_SIGNATURE_MODE` secret:
+  - `"log"` — checks and logs, never rejects.
+  - `"enforce"` (**current, flipped 24 Sep evening**) — rejects invalid signatures with HTTP 432. No redeploy was needed, just a secret update.
+  - Before flipping: confirmed `valid:true` on the last 50 real Flow requests logged (spanning ~3 hours, across INIT/data_exchange/ping). Zero `valid:false` seen. Still worth watching logs after the flip for a real Settings/Address Flow interaction to confirm `mode:enforce` shows up with no unexpected 432s.
 - **Still open**: the signature check only proves the request came from Meta — it does not stop someone from taking a validly-signed request and substituting a different `order_id` or phone number in the flow token (order IDs are sequential integers). Signed/authenticated flow tokens are the real fix and are not yet built.
 
 ## 10. Address Flow protected baseline
@@ -136,17 +136,24 @@ Orders: ~125 (sequence has one gap from a retried insert — normal). Order item
 
 ## 14. Outstanding work (in rough priority order)
 
-1. Flip `FLOW_SIGNATURE_MODE` to `enforce` (ready now, low risk).
-2. Signed/authenticated flow tokens (the real fix for order/profile-lookup forgery).
-3. Transactional order creation + self-healing retry for the payment webhook (payment "paid" but order stuck "pending_payment" on partial failure).
-4. Tighten payment link + `order_details` expiry to ~15 minutes; handle `payment_link.expired`/`cancelled`.
-5. Production config hardening: strict `RAZORPAY_MODE` validation, permanent (non-temporary) WhatsApp system-user access token, confirm all hard-coded IDs (see table in `WhatsApp_Flow_Error_Prevention_Guide.md`) are the real production values, reject an empty `WHATSAPP_VERIFY_TOKEN`, enable MFA on the Supabase account.
-6. Remove dead code: `whatsapp-flow`'s unused `UPDATE_PROFILE` `data_exchange` handler; `whatsapp-webhook`'s unused `viewOil`/`OIL_PRODUCT_IDS` (confirmed not reachable from the current menu).
-7. Guard `sync-meta-catalog` against an empty Meta response wiping the local catalog; quote `retailer_id` inside `or=(...)` filters defensively.
-8. Split `whatsapp-webhook` into multiple files under one function (maintainability only, no behavior change).
-9. Before a staff front-end: rename `Product`/`Profile`/`whatsAppUserId` to snake_case, detach `Profile` from `auth.users` and stop creating a hidden Auth account per WhatsApp customer, add staff-role RLS policies.
-10. Decide on the Supabase plan (Free → Pro) before treating this as a real production launch; re-run advisors and wipe test data at that point.
+**Done, 24 Sep evening (quick/low-risk batch):**
+
+1. ~~Flip `FLOW_SIGNATURE_MODE` to `enforce`~~ — done via a secret update (no redeploy needed). Pre-flip logs showed `valid:true` on the last 50 real Flow requests (~3 hours), zero failures. Still worth a live spot-check after a real Settings/Address Flow interaction.
+2. ~~Remove dead code~~ — done. `whatsapp-flow` v44: unused `UPDATE_PROFILE` `data_exchange` handler removed. `whatsapp-webhook` v83: unused `viewOil`/`OIL_PRODUCT_IDS` removed (including both call sites in the `button` and `button_reply` handlers).
+3. ~~Guard `sync-meta-catalog` against an empty Meta response~~ — done (v6). A zero-product Meta response now short-circuits before the stale-deletion step and returns `{"cleanup_skipped":"empty_meta_response"}` instead of wiping `public.Product`. Also added defensive double-quoting of `retailer_id` inside the stale-cleanup `or=(...)` filter (via a new `quotePgFilterValue` helper) per the PostgREST filter-encoding lesson in the Error Prevention Guide §9.
+
+All three: esbuild-bundle-checked, deployed via `npx supabase functions deploy ... --use-api`, active version verified via `list_edge_functions`, re-downloaded and `git diff`-confirmed byte-identical to the repo, committed (3 separate commits) and pushed to `cursor/production-hardening`.
+
+**Still open, in rough priority order:**
+
+1. Signed/authenticated flow tokens (the real fix for order/profile-lookup forgery).
+2. Transactional order creation + self-healing retry for the payment webhook (payment "paid" but order stuck "pending_payment" on partial failure).
+3. Tighten payment link + `order_details` expiry to ~15 minutes; handle `payment_link.expired`/`cancelled`.
+4. Production config hardening: strict `RAZORPAY_MODE` validation, permanent (non-temporary) WhatsApp system-user access token, confirm all hard-coded IDs (see table in `WhatsApp_Flow_Error_Prevention_Guide.md`) are the real production values, reject an empty `WHATSAPP_VERIFY_TOKEN`, enable MFA on the Supabase account.
+5. Split `whatsapp-webhook` into multiple files under one function (maintainability only, no behavior change).
+6. Before a staff front-end: rename `Product`/`Profile`/`whatsAppUserId` to snake_case, detach `Profile` from `auth.users` and stop creating a hidden Auth account per WhatsApp customer, add staff-role RLS policies.
+7. Decide on the Supabase plan (Free → Pro) before treating this as a real production launch; re-run advisors and wipe test data at that point.
 
 ## 15. Continuation prompt
 
-Continue the WhatsApp Flow App from the state dated 24 September 2026. The GitHub repo (`main`) and the live Supabase project (`faoomjgkofqrdajaftjd`) are kept in sync — inspect both before changing anything, and re-confirm parity with `supabase functions download --use-api` + `git diff` after any manual edit. Current active functions: `whatsapp-webhook` v82, `whatsapp-flow` v43, `razorpay-webhook` v24, `sync-meta-catalog` v5, `retry-order-handoffs` v1. The Address Flow v7.3 is a protected working baseline. Catalog sync is now manual-only. See §14 above for the prioritized outstanding-work list — start there. Make one focused change at a time, deploy the complete function via the CLI, verify the active version, commit/push, and test the real runtime path before moving to the next item.
+Continue the WhatsApp Flow App from the state dated 24 September 2026 (evening). The GitHub repo (currently `cursor/production-hardening`, one merge away from `main`) and the live Supabase project (`faoomjgkofqrdajaftjd`) are kept in sync — inspect both before changing anything, and re-confirm parity with `supabase functions download --use-api` + `git diff` after any manual edit. Current active functions: `whatsapp-webhook` v83, `whatsapp-flow` v44, `razorpay-webhook` v24, `sync-meta-catalog` v6, `retry-order-handoffs` v1. `FLOW_SIGNATURE_MODE` is now `enforce`. The Address Flow v7.3 is a protected working baseline. Catalog sync is now manual-only. See §14 above for the prioritized outstanding-work list — items 1/6/7 (as originally numbered) are done; start with signed/authenticated flow tokens next. Make one focused change at a time, deploy the complete function via the CLI, verify the active version, commit/push, and test the real runtime path before moving to the next item.
