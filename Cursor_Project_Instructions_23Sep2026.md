@@ -6,9 +6,9 @@ Last updated: 24 September 2026 (night).
 The GitHub repo (`cursor/production-hardening` branch, one merge away from `main`, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth and are kept in sync — the branch has been confirmed byte-for-byte identical to the deployed function source after every change this session. Treat a mismatch between them as a bug to investigate, not something to silently paper over.
 
 Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
-- whatsapp-webhook v88
+- whatsapp-webhook v89
 - whatsapp-flow v47
-- razorpay-webhook v28
+- razorpay-webhook v29
 - sync-meta-catalog v8
 - retry-order-handoffs v3
 

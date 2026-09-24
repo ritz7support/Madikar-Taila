@@ -10,9 +10,12 @@ const API_VERSION=Deno.env.get("WHATSAPP_API_VERSION")??"v25.0";
 const CATALOG_ID=Deno.env.get("WHATSAPP_CATALOG_ID")??"1515875913870520";
 const POPULAR_PRODUCT_SET_ID="1027827043551409";
 const CATALOG_THUMBNAIL_PRODUCT_ID="sdedto6u1x";
-const RAZORPAY_MODE=(Deno.env.get("RAZORPAY_MODE")??"test").toLowerCase();
-const RAZORPAY_KEY_ID=Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_ID":"RAZORPAY_TEST_KEY_ID");
-const RAZORPAY_KEY_SECRET=Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_SECRET":"RAZORPAY_TEST_KEY_SECRET");
+// Must be exactly "test" or "live". Anything else (unset, typo) disables Razorpay calls
+// instead of silently falling back to test mode.
+const RAZORPAY_MODE_RAW=(Deno.env.get("RAZORPAY_MODE")??"").trim().toLowerCase();
+const RAZORPAY_MODE=RAZORPAY_MODE_RAW==="live"||RAZORPAY_MODE_RAW==="test"?RAZORPAY_MODE_RAW:null;
+const RAZORPAY_KEY_ID=RAZORPAY_MODE?Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_ID":"RAZORPAY_TEST_KEY_ID"):undefined;
+const RAZORPAY_KEY_SECRET=RAZORPAY_MODE?Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_SECRET":"RAZORPAY_TEST_KEY_SECRET"):undefined;
 const RAZORPAY_IS_TEST=RAZORPAY_MODE!=="live";
 const RAZORPAY_CALLBACK_URL="https://wa.me/919972267897";
 const FLOW_TOKEN_SECRET=Deno.env.get("FLOW_TOKEN_SECRET")??"";
@@ -123,6 +126,7 @@ async function send(payload:unknown){
 }
 
 async function razorpay(path:string,options:RequestInit={}){
+  if(!RAZORPAY_MODE)throw new Error(`RAZORPAY_MODE must be "test" or "live", got ${JSON.stringify(RAZORPAY_MODE_RAW)}`);
   if(!RAZORPAY_KEY_ID||!RAZORPAY_KEY_SECRET)throw new Error(`Razorpay ${RAZORPAY_MODE} API keys are not configured`);
   const auth=btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
   return timed("razorpay",path,()=>fetch(`https://api.razorpay.com${path}`,{
@@ -626,7 +630,7 @@ async function handleAddressFlowCompletion(waId:string,data:any){
 Deno.serve(async(req:Request)=>{
   if(req.method==="GET"){
     const u=new URL(req.url);
-    if(u.searchParams.get("hub.verify_token")===VERIFY_TOKEN){
+    if(VERIFY_TOKEN&&u.searchParams.get("hub.verify_token")===VERIFY_TOKEN){
       return new Response(u.searchParams.get("hub.challenge")??"",{status:200});
     }
     return new Response("Forbidden",{status:403});
