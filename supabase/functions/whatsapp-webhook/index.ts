@@ -516,50 +516,43 @@ async function createOrderFromWhatsAppCart(waId:string,m:any){
   const shipping=0,discount=0,total=subtotal;
   const referenceId=`ORD-${Date.now()}-${crypto.randomUUID().slice(0,6).toUpperCase()}`;
 
-  const orderInsert=await db("/rest/v1/orders",{
+  // Order + order_items are created atomically via a single Postgres function call
+  // (create_order_with_items) so a partial failure -- e.g. a bad item slipping past the
+  // checks above -- rolls back the order row too, instead of leaving an empty
+  // pending_payment order behind that silently blocks retries (dedup is keyed on
+  // whatsapp_message_id, so a half-created order would make every future retry of the
+  // same WhatsApp message a no-op forever). The function also absorbs the
+  // whatsapp_message_id duplicate-insert race that used to need a 409 + re-select here.
+  const rpc=await db("/rest/v1/rpc/create_order_with_items",{
     method:"POST",
-    headers:{Prefer:"return=representation"},
     body:JSON.stringify({
-      reference_id:referenceId,
-      profile_id:profile.id,
-      whatsapp_user_id:waId,
-      catalog_id:catalogId,
-      whatsapp_message_id:messageId,
-      status:"pending_payment",
-      currency:"INR",
-      subtotal,shipping,discount,total
+      p_reference_id:referenceId,
+      p_profile_id:profile.id,
+      p_whatsapp_user_id:waId,
+      p_catalog_id:catalogId,
+      p_whatsapp_message_id:messageId,
+      p_currency:"INR",
+      p_subtotal:subtotal,
+      p_shipping:shipping,
+      p_discount:discount,
+      p_total:total,
+      p_items:normalizedItems.map(i=>({
+        product_retailer_id:i.product_retailer_id,
+        product_name:i.product_name,
+        quantity:i.quantity,
+        unit_price:i.unit_price,
+        currency:i.currency
+      }))
     })
   });
-
-  if(!orderInsert.ok){
-    const text=await orderInsert.text();
-    if(orderInsert.status===409){
-      const retry=await db(`/rest/v1/orders?select=*&whatsapp_message_id=eq.${encodeURIComponent(messageId)}&limit=1`);
-      if(retry.ok){
-        const rows=await retry.json();
-        if(rows[0]){
-          console.log("Concurrent duplicate WhatsApp order detected:",JSON.stringify({message_id:messageId,order_id:rows[0].id}));
-          return;
-        }
-      }
-    }
-    throw new Error(`Order creation failed: ${text}`);
+  if(!rpc.ok)throw new Error(`Order creation failed: ${await rpc.text()}`);
+  const result=await rpc.json();
+  const order=result?.order;
+  if(!order?.id)throw new Error(`Order creation RPC returned no order: ${JSON.stringify(result)}`);
+  if(result?.duplicate){
+    console.log("Concurrent duplicate WhatsApp order detected:",JSON.stringify({message_id:messageId,order_id:order.id}));
+    return;
   }
-
-  const order=(await orderInsert.json())[0];
-  const itemInsert=await db("/rest/v1/order_items",{
-    method:"POST",
-    headers:{Prefer:"return=representation"},
-    body:JSON.stringify(normalizedItems.map(i=>({
-      order_id:order.id,
-      product_retailer_id:i.product_retailer_id,
-      quantity:i.quantity,
-      unit_price:i.unit_price,
-      currency:i.currency,
-      product_name:i.product_name
-    })))
-  });
-  if(!itemInsert.ok)throw new Error(`Order items creation failed: ${await itemInsert.text()}`);
 
   const flowToken=await signFlowToken("checkout-address",[String(order.id),waId]);
   await sendAddressFlowTemplate(waId,flowToken);
