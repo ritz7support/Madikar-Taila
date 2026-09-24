@@ -69,37 +69,6 @@ async function addressDetailsResponse(address: any) { return { version: "3.0", s
 
 async function handleDataExchange(body: any) {
   const data = body?.data ?? {};
-  const token = String(body?.flow_token ?? "");
-  const updateProfile = await getProfileByUpdateFlowToken(token);
-
-  if (body?.screen === "UPDATE_PROFILE") {
-    if (!updateProfile?.id) throw new Error("Profile not found");
-
-    const name = String(data.name ?? "").trim();
-    const email = String(data.email ?? "").trim() || null;
-    if (!name) throw new Error("Name is required");
-
-    const r = await db(`/rest/v1/Profile?id=eq.${encodeURIComponent(updateProfile.id)}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ name, email })
-    });
-    if (!r.ok) throw new Error(`Profile update failed: ${await r.text()}`);
-
-    return {
-      version: "3.0",
-      screen: "SUCCESS",
-      data: {
-        extension_message_response: {
-          params: {
-            flow_token: token,
-            profile_updated: true
-          }
-        }
-      }
-    };
-  }
-
   const profile = await getFlowProfile(body);
 
   if (body?.screen === "ADDRESS_LIST" && data?.user_action === "SELECT_ADDRESS") {
