@@ -19,6 +19,17 @@ const FLOW_TOKEN_SECRET=Deno.env.get("FLOW_TOKEN_SECRET")??"";
 const FLOW_TOKEN_TTL_SECONDS=24*60*60;
 const ADDRESS_TEMPLATE="address",REGISTRATION_TEMPLATE="registration",UPDATE_PERSONAL_INFO_TEMPLATE="update_personal_info",MAIN_MENU_TEMPLATE="main_menu",PLACE_NEW_ORDER_TEMPLATE="place_new_order",FULL_CATALOGUE_TEMPLATE="full_catalogue",TEMPLATE_LANGUAGE="en";
 const MAX_ORDER_MESSAGE_AGE_SECONDS=24*60*60;
+// Shared expiry window for the Razorpay Payment Link *and* the WhatsApp order_details
+// "order.expiration" field, which Meta's payments docs say should match. Razorpay rejects
+// any expire_by under 15 minutes (900s) from now; Meta's expiration.timestamp minimum is
+// 300s. 16 minutes gives a 1-minute safety margin above Razorpay's hard floor to absorb
+// the checkout request's own processing latency.
+const PAYMENT_LINK_EXPIRY_SECONDS=16*60;
+// A reused pending payment link must still have this much life left, or it's treated as
+// unusable and a fresh Razorpay link is created instead -- with the old 24h expiry this
+// never mattered, but with a 16-minute window a slow/re-run checkout could otherwise hand
+// back a link that's already expired or about to.
+const PAYMENT_LINK_MIN_REMAINING_SECONDS=60;
 
 function hexToBytes(hex:string){
   if(hex.length%2!==0)return null;
@@ -381,17 +392,30 @@ async function getExistingPaymentForOrder(orderId:number){
 
 async function createRazorpayPaymentLink(order:any,waId:string){
   const existing=await getExistingPaymentForOrder(Number(order.id));
-  if(existing?.provider_payment_link_url)return existing;
+  const existingStillUsable=existing?.provider_payment_link_url
+    &&(!existing.expires_at||new Date(existing.expires_at).getTime()>Date.now()+PAYMENT_LINK_MIN_REMAINING_SECONDS*1000);
+  if(existingStillUsable)return existing;
+  const needsFreshReferenceId=Boolean(existing?.provider_payment_link_url);
+  if(needsFreshReferenceId){
+    console.log("Existing Razorpay Payment Link is expired or about to expire; creating a fresh one:",JSON.stringify({order_id:order.id,payment_id:existing.id,expires_at:existing.expires_at}));
+  }
   const amountPaise=Math.round(Number(order.total)*100);
   if(!Number.isInteger(amountPaise)||amountPaise<=0)throw new Error(`Invalid order total for Razorpay: ${order.total}`);
   const profile=await getProfile(waId);
   const customerName=String(profile?.name??"Customer").trim()||"Customer";
+  // Razorpay requires reference_id to be globally unique per Payment Link (HTTP 400
+  // "An existing reference id has been passed" on reuse). The order's own reference_id
+  // (used separately in the WhatsApp order_details message) is unaffected -- only the
+  // value we send to Razorpay needs a fresh suffix when replacing an expired link.
+  const razorpayReferenceId=needsFreshReferenceId
+    ?`${String(order.reference_id).slice(0,34)}-R${crypto.randomUUID().slice(0,4).toUpperCase()}`
+    :String(order.reference_id).slice(0,40);
   const payload:any={
     amount:amountPaise,
     currency:"INR",
     accept_partial:false,
-    expire_by:Math.floor(Date.now()/1000)+24*60*60,
-    reference_id:String(order.reference_id).slice(0,40),
+    expire_by:Math.floor(Date.now()/1000)+PAYMENT_LINK_EXPIRY_SECONDS,
+    reference_id:razorpayReferenceId,
     description:`Payment for order ${order.reference_id}`,
     customer:{name:customerName,contact:`+${waId}`},
     notes:{order_id:String(order.id),whatsapp_user_id:waId},
@@ -401,8 +425,10 @@ async function createRazorpayPaymentLink(order:any,waId:string){
   };
   console.log("Creating Razorpay Payment Link:",JSON.stringify({
     order_id:order.id,
-    reference_id:order.reference_id,
+    order_reference_id:order.reference_id,
+    razorpay_reference_id:razorpayReferenceId,
     amount:amountPaise,
+    expire_by:payload.expire_by,
     mode:RAZORPAY_IS_TEST?"test_standard_link":"live_standard_link_upi_only",
     callback_url:RAZORPAY_CALLBACK_URL
   }));
@@ -430,12 +456,30 @@ async function createRazorpayPaymentLink(order:any,waId:string){
   return (await insert.json())[0];
 }
 
+function buildOrderExpiration(order:any,payment:any){
+  // Mirrors the Razorpay Payment Link's own expire_by exactly (payment.expires_at is
+  // stored straight from Razorpay's response), so both surfaces agree on when the order
+  // stops being payable, per Meta's payments docs. Meta's own minimum is 300 seconds from
+  // send time -- if for any reason less than that remains (e.g. a very slow checkout),
+  // omit the field rather than risk the whole message being rejected for violating it.
+  if(!payment?.expires_at)return null;
+  const expiresAtMs=new Date(payment.expires_at).getTime();
+  if(!Number.isFinite(expiresAtMs))return null;
+  const secondsUntilExpiry=Math.floor((expiresAtMs-Date.now())/1000);
+  if(secondsUntilExpiry<300){
+    console.error("Payment link expiry is under Meta's 300s minimum; omitting order.expiration from review_and_pay message:",JSON.stringify({order_id:order.id,seconds_until_expiry:secondsUntilExpiry}));
+    return null;
+  }
+  return {timestamp:String(Math.floor(expiresAtMs/1000)),description:"This payment link expires in 15 minutes."};
+}
+
 function buildOrderDetailsPayload(to:string,order:any,items:any[],payment:any){
   if(String(order.currency).toUpperCase()!=="INR")throw new Error(`Order currency is ${order.currency}`);
   if(!items.length)throw new Error("Order has no items");
   const expectedTotal=Number(order.subtotal)+Number(order.shipping)-Number(order.discount);
   if(Math.abs(expectedTotal-Number(order.total))>0.001)throw new Error(`Order total mismatch: expected ${expectedTotal}, stored ${order.total}`);
   if(!payment?.provider_payment_link_url)throw new Error("Razorpay Payment Link URL is missing");
+  const expiration=buildOrderExpiration(order,payment);
   return {
     messaging_product:"whatsapp",
     recipient_type:"individual",
@@ -459,6 +503,7 @@ function buildOrderDetailsPayload(to:string,order:any,items:any[],payment:any){
           order:{
             status:"pending",
             catalog_id:String(order.catalog_id),
+            ...(expiration?{expiration}:{}),
             items:items.map((item:any)=>({
               retailer_id:String(item.product_retailer_id),
               name:String(item.product_name??item.product_retailer_id).trim()||String(item.product_retailer_id),
