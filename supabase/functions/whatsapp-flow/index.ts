@@ -5,9 +5,35 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? "";
 const SIGNATURE_MODE = (Deno.env.get("FLOW_SIGNATURE_MODE") ?? "log").toLowerCase();
+const FLOW_TOKEN_SECRET = Deno.env.get("FLOW_TOKEN_SECRET") ?? "";
 
 function hexToBytes(hex: string): Uint8Array | null { if (hex.length % 2 !== 0) return null; const bytes = new Uint8Array(hex.length / 2); for (let i = 0; i < bytes.length; i++) { const value = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16); if (Number.isNaN(value)) return null; bytes[i] = value; } return bytes; }
 async function isValidMetaSignature(body: string, signatureHeader: string | null): Promise<boolean> { if (!APP_SECRET || !signatureHeader?.startsWith("sha256=")) return false; const expected = hexToBytes(signatureHeader.slice(7)); if (!expected) return false; const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const actual = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body))); if (actual.length !== expected.length) return false; let diff = 0; for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i]; return diff === 0; }
+async function hmacHex(secret: string, data: string): Promise<string> { const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data))); return Array.from(sig).map((b) => b.toString(16).padStart(2, "0")).join(""); }
+function timingSafeEqualHex(a: string, b: string): boolean { if (a.length !== b.length) return false; let diff = 0; for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i); return diff === 0; }
+// Verifies a token minted by signFlowToken() in whatsapp-webhook:
+// <prefix>:<part1>:<part2>:...:<nonce>:<expiry_unix>:<hmac_sha256_hex>.
+// A valid signature proves WE minted this exact token (order id / wa_id included), so a
+// party who can only trigger arbitrarily-shaped, validly Meta-signed Flow endpoint
+// requests (Meta's signature proves origin, not token content) cannot forge one pointing
+// at someone else's order or profile. Returns the signed parts on success, or null on any
+// mismatch/expiry -- callers must treat null exactly like "token not recognized", never as
+// an error, so an invalid/forged token degrades to an anonymous/empty Flow screen instead
+// of leaking another customer's data.
+async function parseSignedToken(prefix: string, token: string, partCount: number): Promise<string[] | null> {
+  if (!FLOW_TOKEN_SECRET) return null;
+  const segments = String(token).split(":");
+  if (segments.length !== 1 + partCount + 3) return null;
+  if (segments[0] !== prefix) return null;
+  const sig = segments[segments.length - 1];
+  const expiry = Number(segments[segments.length - 2]);
+  if (!/^[a-f0-9]+$/i.test(sig)) return null;
+  const payload = segments.slice(0, segments.length - 1).join(":");
+  const expected = await hmacHex(FLOW_TOKEN_SECRET, payload);
+  if (!timingSafeEqualHex(expected.toLowerCase(), sig.toLowerCase())) return null;
+  if (!Number.isFinite(expiry) || expiry < Math.floor(Date.now() / 1000)) return null;
+  return segments.slice(1, 1 + partCount);
+}
 function base64ToBytes(value: string): Uint8Array { const binary = atob(value); return Uint8Array.from(binary, (char) => char.charCodeAt(0)); }
 function bytesToBase64(bytes: Uint8Array): string { let binary = ""; const chunkSize = 0x8000; for (let i = 0; i < bytes.length; i += chunkSize) binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize)); return btoa(binary); }
 function pemToArrayBuffer(pem: string): ArrayBuffer { const base64 = pem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").replace(/\s/g, ""); return base64ToBytes(base64).buffer; }
@@ -17,16 +43,30 @@ async function encryptResponse(response: Record<string, unknown>, aesKeyBytes: U
 async function db(path: string, options: RequestInit = {}) { if (!SUPABASE_URL || !SERVICE_KEY) throw new Error("Supabase environment is not configured"); return fetch(`${SUPABASE_URL}${path}`, { ...options, headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json", ...(options.headers ?? {}) } }); }
 async function getProfileByWhatsAppId(waId: string) { const r = await db(`/rest/v1/Profile?select=id,name,email&whatsAppUserId=eq.${encodeURIComponent(waId)}&limit=1`); if (!r.ok) throw new Error(`Profile lookup failed: ${await r.text()}`); const rows = await r.json(); return rows[0] ?? null; }
 async function getProfileByUpdateFlowToken(token: string) {
-  const match = String(token).match(/^update-profile:([0-9]{8,20}):([a-f0-9-]+)$/i);
-  if (!match) return null;
-  const waId = match[1];
-  return await getProfileByWhatsAppId(waId);
+  const signed = await parseSignedToken("update-profile", token, 1);
+  if (signed) return await getProfileByWhatsAppId(signed[0]);
+  // Legacy unsigned format (issued before signed flow tokens, 24 Sep). Trusted as before
+  // for backward compatibility during rollout -- safe to delete once whatsapp-webhook has
+  // been emitting only signed tokens for at least the token TTL (24h) and no more legacy
+  // matches show up in logs.
+  const legacy = String(token).match(/^update-profile:([0-9]{8,20}):([a-f0-9-]+)$/i);
+  if (!legacy) return null;
+  console.warn("Accepted legacy unsigned update-profile flow token; remove this fallback once signed tokens have fully rolled out.");
+  return await getProfileByWhatsAppId(legacy[1]);
 }
 async function getProfileByCheckoutFlowToken(token: string) {
-  const match = String(token).match(/^checkout-address:([0-9]+):([a-f0-9-]+)$/i);
-  if (!match) return null;
-  const orderId = match[1];
-  const r = await db(`/rest/v1/orders?select=id,profile_id,whatsapp_user_id,status& id=eq.${encodeURIComponent(orderId)}&limit=1`.replace("& id=", "&id="));
+  const signed = await parseSignedToken("checkout-address", token, 2);
+  let orderId: string | null = signed ? signed[0] : null;
+  if (!orderId) {
+    // Legacy unsigned format -- see comment in getProfileByUpdateFlowToken.
+    const legacy = String(token).match(/^checkout-address:([0-9]+):([a-f0-9-]+)$/i);
+    if (legacy) {
+      orderId = legacy[1];
+      console.warn("Accepted legacy unsigned checkout-address flow token; remove this fallback once signed tokens have fully rolled out.");
+    }
+  }
+  if (!orderId) return null;
+  const r = await db(`/rest/v1/orders?select=id,profile_id,whatsapp_user_id,status&id=eq.${encodeURIComponent(orderId)}&limit=1`);
   if (!r.ok) throw new Error(`Checkout order lookup failed: ${await r.text()}`);
   const rows = await r.json();
   const order = rows[0];
