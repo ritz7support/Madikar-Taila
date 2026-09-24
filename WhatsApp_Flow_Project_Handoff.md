@@ -100,7 +100,8 @@ WhatsApp cart → pending_payment order + order_items
 - `whatsapp-flow` checks Meta's `X-Hub-Signature-256` (using `WHATSAPP_APP_SECRET`) on every request and logs `{"valid":true/false,"mode":...}`. Controlled by the `FLOW_SIGNATURE_MODE` secret:
   - `"log"` — checks and logs, never rejects.
   - `"enforce"` (**current, flipped 24 Sep evening**) — rejects invalid signatures with HTTP 432. No redeploy was needed, just a secret update.
-  - Before flipping: confirmed `valid:true` on the last 50 real Flow requests logged (spanning ~3 hours, across INIT/data_exchange/ping). Zero `valid:false` seen. Still worth watching logs after the flip for a real Settings/Address Flow interaction to confirm `mode:enforce` shows up with no unexpected 432s.
+  - Before flipping: confirmed `valid:true` on the last 50 real Flow requests logged (spanning ~3 hours, across INIT/data_exchange/ping). Zero `valid:false` seen.
+  - **Confirmed live post-flip**: a real Settings → Update Personal Info and a real Address Flow run (24 Sep, ~15:09–15:21 UTC) both show `{"valid":true,"mode":"enforce"}` on every `whatsapp-flow` call, and every `whatsapp-webhook`/`whatsapp-flow` HTTP response in that window was `200` with no errors in the function console logs.
 - **Still open**: the signature check only proves the request came from Meta — it does not stop someone from taking a validly-signed request and substituting a different `order_id` or phone number in the flow token (order IDs are sequential integers). Signed/authenticated flow tokens are the real fix and are not yet built.
 
 ## 10. Address Flow protected baseline
@@ -138,7 +139,7 @@ Orders: ~125 (sequence has one gap from a retried insert — normal). Order item
 
 **Done, 24 Sep evening (quick/low-risk batch):**
 
-1. ~~Flip `FLOW_SIGNATURE_MODE` to `enforce`~~ — done via a secret update (no redeploy needed). Pre-flip logs showed `valid:true` on the last 50 real Flow requests (~3 hours), zero failures. Still worth a live spot-check after a real Settings/Address Flow interaction.
+1. ~~Flip `FLOW_SIGNATURE_MODE` to `enforce`~~ — done via a secret update (no redeploy needed). Pre-flip logs showed `valid:true` on the last 50 real Flow requests (~3 hours), zero failures. **Live-tested and confirmed** with a real Settings update + Address Flow run post-flip — all `valid:true`/`mode:enforce`, all `200`s, no errors.
 2. ~~Remove dead code~~ — done. `whatsapp-flow` v44: unused `UPDATE_PROFILE` `data_exchange` handler removed. `whatsapp-webhook` v83: unused `viewOil`/`OIL_PRODUCT_IDS` removed (including both call sites in the `button` and `button_reply` handlers).
 3. ~~Guard `sync-meta-catalog` against an empty Meta response~~ — done (v6). A zero-product Meta response now short-circuits before the stale-deletion step and returns `{"cleanup_skipped":"empty_meta_response"}` instead of wiping `public.Product`. Also added defensive double-quoting of `retailer_id` inside the stale-cleanup `or=(...)` filter (via a new `quotePgFilterValue` helper) per the PostgREST filter-encoding lesson in the Error Prevention Guide §9.
 
