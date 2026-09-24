@@ -46,13 +46,13 @@ Sent when the customer taps the "Settings" button/reply. Uses the **same underly
       "type": "button",
       "sub_type": "flow",
       "index": "0",
-      "parameters": [{ "type": "action", "action": { "flow_token": "update-profile:<WA_PHONE_NUMBER>:<UUID>" } }]
+      "parameters": [{ "type": "action", "action": { "flow_token": "update-profile:<WA_PHONE_NUMBER>:<NONCE>:<EXPIRY_UNIX>:<HMAC_SHA256_HEX>" } }]
     }]
   }
 }
 ```
 
-The `update-profile:<wa_id>:<uuid>` token IS read by `whatsapp-flow` on `INIT` (to pre-fill current name/email), but the actual save still happens via `nfm_reply` on `whatsapp-webhook`.
+The `update-profile:<wa_id>:...` token IS read by `whatsapp-flow` on `INIT` (to pre-fill current name/email), but the actual save still happens via `nfm_reply` on `whatsapp-webhook`. **Updated 24 Sep evening**: this token is now HMAC-signed and verified the same way as the checkout-address token below (see §8).
 
 ## 3. Main menu (interactive button message)
 
@@ -162,13 +162,13 @@ Sent right after a WhatsApp cart order is created.
       "type": "button",
       "sub_type": "flow",
       "index": "0",
-      "parameters": [{ "type": "action", "action": { "flow_token": "checkout-address:<ORDER_ID>:<RANDOM_UUID>" } }]
+      "parameters": [{ "type": "action", "action": { "flow_token": "checkout-address:<ORDER_ID>:<WA_ID>:<NONCE>:<EXPIRY_UNIX>:<HMAC_SHA256_HEX>" } }]
     }]
   }
 }
 ```
 
-The `<UUID>` in this token is currently **not verified** — only the numeric order ID is parsed and matched (and constrained by the `whatsapp_user_id` + `status = pending_payment` + `address_id IS NULL` filter on the underlying `PATCH`). Signed tokens are planned but not yet built (see handoff doc §9/§14).
+**Updated 24 Sep evening**: the token is now `checkout-address:<ORDER_ID>:<WA_ID>:<NONCE>:<EXPIRY_UNIX>:<HMAC_SHA256_HEX>` — HMAC-signed by `whatsapp-webhook` (`FLOW_TOKEN_SECRET`) and verified by `whatsapp-flow` before the embedded order id is trusted for address-book lookups. The final address-attach `PATCH` in `whatsapp-webhook` is additionally, and independently, constrained by `whatsapp_user_id` + `status = pending_payment` + `address_id IS NULL`. See handoff doc §9/§14.
 
 ## 9. Review and Pay (order_details / review_and_pay)
 
@@ -254,7 +254,7 @@ Sent (with up to 3 retries) after the verified `payment_link.paid` webhook moves
 
 ## 12. Runtime notes
 
-- `whatsapp-webhook` v83 is current as of 24 Sep 2026 (evening); `razorpay-webhook` v24.
+- `whatsapp-webhook` v86 is current as of 24 Sep 2026 (evening); `whatsapp-flow` v47; `razorpay-webhook` v24.
 - WhatsApp API version `v25.0`; catalog ID `1515875913870520`; phone number ID `1327606333760280` (all overridable via env vars of the same name, except the popular-product-set ID and the oil-product IDs, which are hard-coded).
 - Razorpay Standard Payment Link URL is dynamic, from `payments.provider_payment_link_url`. Payment success is finalized only by the verified `payment_link.paid` webhook.
 - Template names, language, button types and approved components must match the configured WhatsApp Business Account templates exactly.

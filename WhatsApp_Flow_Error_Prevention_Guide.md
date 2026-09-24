@@ -92,10 +92,14 @@ Edge Functions run in whichever region is closest to the *caller* by default. Me
 | `https://wa.me/919972267897` | Razorpay post-payment callback | none |
 | `registration`, `update_personal_info`, `place_new_order`, `full_catalogue`, `address` (lang `en`) | WhatsApp template names | must match approved templates in the production WABA |
 
+## 11a. Signed flow token lesson (new, 24 Sep evening)
+
+`checkout-address`/`update-profile` flow tokens were plain (order id / wa_id embedded unsigned). Meta's Flow endpoint request signature only proves a request came from Meta's infrastructure — it says nothing about whether the `flow_token` content inside is the one we actually issued, since a party with WABA access (e.g. Business Manager's Flow preview/test tooling) can trigger arbitrarily-shaped, validly-signed requests with a hand-picked `flow_token`. Fix: HMAC-sign every token (`FLOW_TOKEN_SECRET`, new project secret) as `<prefix>:<parts...>:<nonce>:<expiry_unix>:<hmac_sha256_hex>`; `whatsapp-flow` verifies the signature (constant-time compare) and expiry before trusting the embedded order id/wa_id, returning `null` — never an error — on any mismatch, so a forged token degrades to an anonymous/empty Flow screen instead of leaking another customer's addresses. Rolled out safely in dependency order (verifier first, purely additive with a legacy-unsigned fallback; issuer second, switches to signed-only) so there was never a window where one side didn't understand the other's tokens. Verified locally (sign/verify round-trip, tamper detection, expiry enforcement) before deploying, then confirmed live with a real test order end-to-end.
+
 ## 14. Current production baseline (24 Sep 2026, evening)
 
-- `whatsapp-webhook` v83, `whatsapp-flow` v44, `razorpay-webhook` v24, `sync-meta-catalog` v6, `retry-order-handoffs` v1.
-- `FLOW_SIGNATURE_MODE` is now `enforce` (was `log`).
+- `whatsapp-webhook` v86, `whatsapp-flow` v47, `razorpay-webhook` v24, `sync-meta-catalog` v6, `retry-order-handoffs` v1.
+- `FLOW_SIGNATURE_MODE` is now `enforce` (was `log`). `FLOW_TOKEN_SECRET` (new) signs/verifies flow tokens.
 - Address Flow JSON v7.3 (unchanged, protected).
 - Both functions Meta calls directly pinned to `ap-south-1`.
 - `cursor/production-hardening` branch of the GitHub repo confirmed byte-identical to deployed source (one merge behind having this become `main`).

@@ -44,11 +44,13 @@ Last updated: 24 September 2026 (evening — see §14 for the three items closed
 
 | Function | Version (as of 24 Sep evening) | verify_jwt | Purpose |
 |---|---|---|---|
-| `whatsapp-webhook` | v83 | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. `viewOil`/`OIL_PRODUCT_IDS` dead code removed (v83). |
-| `whatsapp-flow` | v44 | false | Flow INIT/data_exchange endpoint for the Address Flow and the shared registration/Settings Flow. Checks Meta's signature — now in **`enforce`** mode (see §9). Dead `UPDATE_PROFILE` `data_exchange` handler removed (v44); the `INIT` pre-fill path is unchanged. |
+| `whatsapp-webhook` | v86 | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. `viewOil`/`OIL_PRODUCT_IDS` dead code removed (v83). Now mints HMAC-signed `checkout-address`/`update-profile` flow tokens (v86, see §9). |
+| `whatsapp-flow` | v47 | false | Flow INIT/data_exchange endpoint for the Address Flow and the shared registration/Settings Flow. Checks Meta's signature — now in **`enforce`** mode (see §9). Dead `UPDATE_PROFILE` `data_exchange` handler removed (v44); the `INIT` pre-fill path is unchanged. Now verifies HMAC-signed flow tokens (v47, see §9). |
 | `razorpay-webhook` | v24 | false | Verifies Razorpay signature, processes `payment_link.paid`, updates payment/order state, schedules `order_status` + n8n handoff. |
 | `sync-meta-catalog` | v6 | true | Pulls the full Meta catalog into `public.Product`. Manually triggered only (see §6). Now guarded against wiping the local catalog on an empty Meta response (v6), and quotes `retailer_id` defensively inside the stale-cleanup `or=(...)` filter. |
 | `retry-order-handoffs` | v1 | false | Called every 5 minutes by `pg_cron`; resends any due n8n order handoff. Can't do anything except resend what's already due, so it's safe without JWT auth. |
+
+(Note: the platform's internal version counters for `razorpay-webhook`/`sync-meta-catalog`/`retry-order-handoffs` have been observed to increment without any content change — confirmed via `download` + `git diff` showing zero diff each time. Content, not the raw version number, is the parity signal that matters.)
 
 `meta-catalog-webhook` has been **deleted** (dashboard + `WHATSAPP_CATALOG_VERIFY_TOKEN` secret removed). The two test-only functions mentioned in older docs (`whatsapp-flow-key-register-test`, `test-order-status`) no longer exist.
 
@@ -102,7 +104,7 @@ WhatsApp cart → pending_payment order + order_items
   - `"enforce"` (**current, flipped 24 Sep evening**) — rejects invalid signatures with HTTP 432. No redeploy was needed, just a secret update.
   - Before flipping: confirmed `valid:true` on the last 50 real Flow requests logged (spanning ~3 hours, across INIT/data_exchange/ping). Zero `valid:false` seen.
   - **Confirmed live post-flip**: a real Settings → Update Personal Info and a real Address Flow run (24 Sep, ~15:09–15:21 UTC) both show `{"valid":true,"mode":"enforce"}` on every `whatsapp-flow` call, and every `whatsapp-webhook`/`whatsapp-flow` HTTP response in that window was `200` with no errors in the function console logs.
-- **Still open**: the signature check only proves the request came from Meta — it does not stop someone from taking a validly-signed request and substituting a different `order_id` or phone number in the flow token (order IDs are sequential integers). Signed/authenticated flow tokens are the real fix and are not yet built.
+- **Fixed 24 Sep evening**: flow tokens are now HMAC-signed (`FLOW_TOKEN_SECRET`, a new project-wide secret). Format: `<prefix>:<part1>:<part2>:...:<nonce>:<expiry_unix>:<hmac_sha256_hex>` — e.g. `checkout-address:<order_id>:<wa_id>:<nonce>:<expiry>:<sig>`, `update-profile:<wa_id>:<nonce>:<expiry>:<sig>`. `whatsapp-webhook`'s `signFlowToken()` mints them (24h TTL); `whatsapp-flow`'s `parseSignedToken()` verifies the HMAC (constant-time compare) and expiry before trusting the embedded order id/wa_id, returning `null` (never an error) on any mismatch, which degrades gracefully to an anonymous/empty Flow screen rather than leaking another customer's addresses. A legacy-unsigned-token fallback remains temporarily for any tokens issued before this deploy (self-obsoletes within 24h; see §14 for cleanup). This closes the gap described below: the Meta signature check alone only proves a request came from Meta's infrastructure, not that the `flow_token` content is the one we actually issued — a party with WABA access (e.g. Business Manager's Flow preview/test tooling) could otherwise hand-craft a validly-signed request with an arbitrary `flow_token` pointing at someone else's order/profile.
 
 ## 10. Address Flow protected baseline
 
@@ -123,9 +125,11 @@ Maintained separately in `Latest Address Flow JSON_7.3.md` — do not edit witho
 - `whatsapp-webhook`, `whatsapp-flow`, `meta-catalog-webhook` (now deleted) all verified Meta's HMAC signature on messaging/catalog webhooks from the start; `whatsapp-flow` now also verifies signatures on Flow endpoint calls (log mode, see §9).
 - Confirmed no other consumer (n8n, front-end, etc.) uses the Supabase public/anon key — n8n has no Supabase node.
 
+**Fixed 24 Sep evening (this session):**
+- Flow signature check now in `enforce` mode.
+- Flow tokens are now HMAC-signed and verified (`FLOW_TOKEN_SECRET`) — order/profile lookups by flow token are cryptographically bound to what we actually issued.
+
 **Still open (see the outstanding-work list, §14):**
-- Flow signature check not yet in `enforce` mode.
-- No signed/authenticated flow tokens — order/profile lookups by flow token are not cryptographically bound to the intended recipient.
 - Order/payment writes not transactional; partial-failure states possible.
 - `RAZORPAY_MODE` isn't strictly validated.
 - Leaked-password protection disabled (irrelevant until staff log in via a front-end).
@@ -137,24 +141,28 @@ Orders: ~125 (sequence has one gap from a retried insert — normal). Order item
 
 ## 14. Outstanding work (in rough priority order)
 
-**Done, 24 Sep evening (quick/low-risk batch):**
+**Done, 24 Sep evening:**
 
 1. ~~Flip `FLOW_SIGNATURE_MODE` to `enforce`~~ — done via a secret update (no redeploy needed). Pre-flip logs showed `valid:true` on the last 50 real Flow requests (~3 hours), zero failures. **Live-tested and confirmed** with a real Settings update + Address Flow run post-flip — all `valid:true`/`mode:enforce`, all `200`s, no errors.
 2. ~~Remove dead code~~ — done. `whatsapp-flow` v44: unused `UPDATE_PROFILE` `data_exchange` handler removed. `whatsapp-webhook` v83: unused `viewOil`/`OIL_PRODUCT_IDS` removed (including both call sites in the `button` and `button_reply` handlers).
 3. ~~Guard `sync-meta-catalog` against an empty Meta response~~ — done (v6). A zero-product Meta response now short-circuits before the stale-deletion step and returns `{"cleanup_skipped":"empty_meta_response"}` instead of wiping `public.Product`. Also added defensive double-quoting of `retailer_id` inside the stale-cleanup `or=(...)` filter (via a new `quotePgFilterValue` helper) per the PostgREST filter-encoding lesson in the Error Prevention Guide §9.
+4. ~~Signed/authenticated flow tokens~~ — done. New `FLOW_TOKEN_SECRET` project secret. `whatsapp-webhook` (v86) now mints `checkout-address:<order_id>:<wa_id>:<nonce>:<expiry_unix>:<hmac_sha256_hex>` and `update-profile:<wa_id>:<nonce>:<expiry_unix>:<hmac_sha256_hex>` tokens (`signFlowToken()`). `whatsapp-flow` (v47) verifies the HMAC + expiry before trusting the embedded order id/wa_id (`parseSignedToken()`), falling back to the old unsigned-token parsing only for any tokens issued before this deploy (self-obsoletes as those age out — safe to delete the fallback + its `console.warn` after the 24h token TTL has fully elapsed with no more legacy matches in logs). **Closes the gap** where a party who could get an arbitrarily-shaped, validly Meta-signed Flow endpoint request through (Meta's signature only proves origin, not token content — e.g. via Business Manager's Flow preview/test tooling on the WABA) could previously read/write another customer's saved addresses by hand-crafting a `flow_token`. The final "attach address to order" write was already safely scoped to the real sender's `wa_id` in `whatsapp-webhook`, so this specifically closes an address-book read/write exposure during the Flow session, not order hijacking.
+   - Verified locally before deploy: sign→verify round-trip, tamper detection (mutated order id → rejected), and expiry enforcement all pass.
+   - Deployed in the safe order (flow first, purely additive; webhook second, switches emission to signed-only) so there was never a window where one side didn't understand the other's tokens.
+   - **Live-tested**: a real test order (id 128) went through cart → signed `checkout-address` token → Address Flow (INIT/SELECT_ADDRESS/data_exchange, all `valid:true`/`mode:enforce`) → address attached → payment → order reached `processing`. No legacy-token warnings, no errors.
 
-All three: esbuild-bundle-checked, deployed via `npx supabase functions deploy ... --use-api`, active version verified via `list_edge_functions`, re-downloaded and `git diff`-confirmed byte-identical to the repo, committed (3 separate commits) and pushed to `cursor/production-hardening`.
+All four: esbuild-bundle-checked, deployed via `npx supabase functions deploy ... --use-api`, active versions verified via `list_edge_functions`, re-downloaded and `git diff`-confirmed byte-identical to the repo, committed and pushed to `cursor/production-hardening`.
 
 **Still open, in rough priority order:**
 
-1. Signed/authenticated flow tokens (the real fix for order/profile-lookup forgery).
-2. Transactional order creation + self-healing retry for the payment webhook (payment "paid" but order stuck "pending_payment" on partial failure).
-3. Tighten payment link + `order_details` expiry to ~15 minutes; handle `payment_link.expired`/`cancelled`.
-4. Production config hardening: strict `RAZORPAY_MODE` validation, permanent (non-temporary) WhatsApp system-user access token, confirm all hard-coded IDs (see table in `WhatsApp_Flow_Error_Prevention_Guide.md`) are the real production values, reject an empty `WHATSAPP_VERIFY_TOKEN`, enable MFA on the Supabase account.
-5. Split `whatsapp-webhook` into multiple files under one function (maintainability only, no behavior change).
-6. Before a staff front-end: rename `Product`/`Profile`/`whatsAppUserId` to snake_case, detach `Profile` from `auth.users` and stop creating a hidden Auth account per WhatsApp customer, add staff-role RLS policies.
-7. Decide on the Supabase plan (Free → Pro) before treating this as a real production launch; re-run advisors and wipe test data at that point.
+1. Transactional order creation + self-healing retry for the payment webhook (payment "paid" but order stuck "pending_payment" on partial failure).
+2. Tighten payment link + `order_details` expiry to ~15 minutes; handle `payment_link.expired`/`cancelled`.
+3. Production config hardening: strict `RAZORPAY_MODE` validation, permanent (non-temporary) WhatsApp system-user access token, confirm all hard-coded IDs (see table in `WhatsApp_Flow_Error_Prevention_Guide.md`) are the real production values, reject an empty `WHATSAPP_VERIFY_TOKEN`, enable MFA on the Supabase account.
+4. Split `whatsapp-webhook` into multiple files under one function (maintainability only, no behavior change).
+5. Before a staff front-end: rename `Product`/`Profile`/`whatsAppUserId` to snake_case, detach `Profile` from `auth.users` and stop creating a hidden Auth account per WhatsApp customer, add staff-role RLS policies.
+6. Decide on the Supabase plan (Free → Pro) before treating this as a real production launch; re-run advisors and wipe test data at that point.
+7. Once confident no legacy unsigned flow tokens remain in use (24h+ after the signed-token deploy with no `console.warn` legacy matches in logs), remove the legacy-token fallback branches in `whatsapp-flow` for full enforcement.
 
 ## 15. Continuation prompt
 
-Continue the WhatsApp Flow App from the state dated 24 September 2026 (evening). The GitHub repo (currently `cursor/production-hardening`, one merge away from `main`) and the live Supabase project (`faoomjgkofqrdajaftjd`) are kept in sync — inspect both before changing anything, and re-confirm parity with `supabase functions download --use-api` + `git diff` after any manual edit. Current active functions: `whatsapp-webhook` v83, `whatsapp-flow` v44, `razorpay-webhook` v24, `sync-meta-catalog` v6, `retry-order-handoffs` v1. `FLOW_SIGNATURE_MODE` is now `enforce`. The Address Flow v7.3 is a protected working baseline. Catalog sync is now manual-only. See §14 above for the prioritized outstanding-work list — items 1/6/7 (as originally numbered) are done; start with signed/authenticated flow tokens next. Make one focused change at a time, deploy the complete function via the CLI, verify the active version, commit/push, and test the real runtime path before moving to the next item.
+Continue the WhatsApp Flow App from the state dated 24 September 2026 (evening). The GitHub repo (currently `cursor/production-hardening`, one merge away from `main`) and the live Supabase project (`faoomjgkofqrdajaftjd`) are kept in sync — inspect both before changing anything, and re-confirm parity with `supabase functions download --use-api` + `git diff` after any manual edit. Current active functions: `whatsapp-webhook` v86, `whatsapp-flow` v47, `razorpay-webhook` v24, `sync-meta-catalog` v6, `retry-order-handoffs` v1. `FLOW_SIGNATURE_MODE` is `enforce`; flow tokens are HMAC-signed via `FLOW_TOKEN_SECRET`. The Address Flow v7.3 is a protected working baseline. Catalog sync is now manual-only. See §14 above for the prioritized outstanding-work list — items 1/4/6/7 (as originally numbered) are done; start with transactional order creation + self-healing payment-webhook retry next. Make one focused change at a time, deploy the complete function via the CLI, verify the active version, commit/push, and test the real runtime path before moving to the next item.

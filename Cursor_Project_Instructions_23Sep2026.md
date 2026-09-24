@@ -6,8 +6,8 @@ Last updated: 24 September 2026.
 The GitHub repo (`main` branch, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are now both source of truth and are kept in sync — `main` has been confirmed byte-for-byte identical to the deployed function source. Treat a mismatch between them as a bug to investigate, not something to silently paper over.
 
 Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
-- whatsapp-webhook v83
-- whatsapp-flow v44
+- whatsapp-webhook v86
+- whatsapp-flow v47
 - razorpay-webhook v24
 - sync-meta-catalog v6
 - retry-order-handoffs v1
@@ -64,7 +64,7 @@ Do not reintroduce Order history unless explicitly requested.
 - Function search_path fixed on the two `updated_at` trigger functions.
 - `whatsapp-flow` checks Meta's request signature on Flow endpoint calls (`FLOW_SIGNATURE_MODE=enforce` as of 24 Sep evening — rejects invalid signatures with HTTP 432; flipped after confirming `valid:true` on 50 consecutive real requests).
 - Leaked-password protection is disabled — irrelevant until a staff front-end with real logins exists.
-- No signed/authenticated flow tokens yet — this is the main remaining security gap (see handoff doc §9/§14).
+- Flow tokens are now HMAC-signed and verified (`FLOW_TOKEN_SECRET`) — see handoff doc §9/§14.
 
 ## n8n order handoff
 `razorpay-webhook` sends the paid-order payload to `N8N_WEBHOOK_URL` inline; on failure, a `pg_cron` job (`retry-order-handoffs`, every 5 minutes) retries via the `retry-order-handoffs` Edge Function, up to 24 attempts. Tracked on `orders.handoff_sent_at`/`handoff_attempts`/`handoff_last_attempt_at`/`handoff_last_error`. n8n appends rows to a Google Sheet — this is a temporary Phase 1 measure until a staff front-end is built; keep the n8n workflow itself simple (no shared secret yet, by design).
