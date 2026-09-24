@@ -43,8 +43,18 @@ async function verifyMetaSignature(body:string,signatureHeader:string|null){
   return diff===0;
 }
 
+// Logs only the path before "?" so phone numbers in query filters stay out of the logs.
+async function timed(kind:string,path:string,run:()=>Promise<Response>){
+  const started=performance.now();
+  try{
+    return await run();
+  }finally{
+    console.log("Timing:",JSON.stringify({kind,path:path.split("?")[0],ms:Math.round(performance.now()-started)}));
+  }
+}
+
 async function db(path:string,options:RequestInit={}){
-  return fetch(`${SUPABASE_URL}${path}`,{
+  return timed("db",path,()=>fetch(`${SUPABASE_URL}${path}`,{
     ...options,
     headers:{
       apikey:SERVICE_KEY,
@@ -52,19 +62,19 @@ async function db(path:string,options:RequestInit={}){
       "Content-Type":"application/json",
       ...(options.headers??{})
     }
-  });
+  }));
 }
 
 async function graph(path:string,options:RequestInit={}){
   if(!ACCESS_TOKEN)throw new Error("WHATSAPP_ACCESS_TOKEN is not configured");
-  return fetch(`https://graph.facebook.com/${API_VERSION}${path}`,{
+  return timed("meta",path,()=>fetch(`https://graph.facebook.com/${API_VERSION}${path}`,{
     ...options,
     headers:{
       Authorization:`Bearer ${ACCESS_TOKEN}`,
       "Content-Type":"application/json",
       ...(options.headers??{})
     }
-  });
+  }));
 }
 
 async function send(payload:unknown){
@@ -81,10 +91,10 @@ async function send(payload:unknown){
 async function razorpay(path:string,options:RequestInit={}){
   if(!RAZORPAY_KEY_ID||!RAZORPAY_KEY_SECRET)throw new Error(`Razorpay ${RAZORPAY_MODE} API keys are not configured`);
   const auth=btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
-  return fetch(`https://api.razorpay.com${path}`,{
+  return timed("razorpay",path,()=>fetch(`https://api.razorpay.com${path}`,{
     ...options,
     headers:{Authorization:`Basic ${auth}`,"Content-Type":"application/json",...(options.headers??{})}
-  });
+  }));
 }
 
 async function getProfile(waId:string){
