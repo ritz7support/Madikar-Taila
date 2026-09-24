@@ -1,16 +1,20 @@
 # WhatsApp Flow App — Cursor Instructions
 
-Last updated: 24 September 2026.
+Last updated: 24 September 2026 (night).
 
 ## Runtime source of truth
-The GitHub repo (`main` branch, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are now both source of truth and are kept in sync — `main` has been confirmed byte-for-byte identical to the deployed function source. Treat a mismatch between them as a bug to investigate, not something to silently paper over.
+The GitHub repo (`cursor/production-hardening` branch, one merge away from `main`, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth and are kept in sync — the branch has been confirmed byte-for-byte identical to the deployed function source after every change this session. Treat a mismatch between them as a bug to investigate, not something to silently paper over.
 
 Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
-- whatsapp-webhook v86
+- whatsapp-webhook v87
 - whatsapp-flow v47
-- razorpay-webhook v24
-- sync-meta-catalog v6
-- retry-order-handoffs v1
+- razorpay-webhook v27
+- sync-meta-catalog v8
+- retry-order-handoffs v3
+
+(Platform version counters drift upward without content changes on some of these — confirmed via `download` + `git diff` showing zero diff. Content parity is the signal that matters, not the raw number.)
+
+Order creation (`whatsapp-webhook`) and payment→order advancement (`razorpay-webhook`) are now atomic via three Postgres RPC functions added in migration `20260924155516_add_transactional_order_and_payment_rpcs.sql` (`create_order_with_items`, `advance_order_to_processing`, `mark_payment_paid_and_advance_order`), closing the "transactional order creation + self-healing payment webhook" item from the outstanding-work list. **Not yet exercised by a real WhatsApp order + real Razorpay payment** — do that before further changes.
 
 `meta-catalog-webhook` has been deleted (catalog sync is now manual-only).
 

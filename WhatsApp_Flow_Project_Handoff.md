@@ -1,6 +1,6 @@
 # WhatsApp Flow App — Project Handoff
 
-Last updated: 24 September 2026 (evening — see §14 for the three items closed this session). Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
+Last updated: 24 September 2026 (night — see §14 for the item closed this session: transactional order creation + self-healing payment webhook). Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
 
 ## 1. Source-of-truth rules
 
@@ -42,13 +42,15 @@ Last updated: 24 September 2026 (evening — see §14 for the three items closed
 
 ## 5. Current deployed Edge Functions
 
-| Function | Version (as of 24 Sep evening) | verify_jwt | Purpose |
+| Function | Version (as of 24 Sep night) | verify_jwt | Purpose |
 |---|---|---|---|
-| `whatsapp-webhook` | v86 | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. `viewOil`/`OIL_PRODUCT_IDS` dead code removed (v83). Now mints HMAC-signed `checkout-address`/`update-profile` flow tokens (v86, see §9). |
+| `whatsapp-webhook` | v87 | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. `viewOil`/`OIL_PRODUCT_IDS` dead code removed (v83). Mints HMAC-signed `checkout-address`/`update-profile` flow tokens (v86, see §9). Order creation now goes through the atomic `create_order_with_items` RPC (v87, see §14). |
 | `whatsapp-flow` | v47 | false | Flow INIT/data_exchange endpoint for the Address Flow and the shared registration/Settings Flow. Checks Meta's signature — now in **`enforce`** mode (see §9). Dead `UPDATE_PROFILE` `data_exchange` handler removed (v44); the `INIT` pre-fill path is unchanged. Now verifies HMAC-signed flow tokens (v47, see §9). |
-| `razorpay-webhook` | v24 | false | Verifies Razorpay signature, processes `payment_link.paid`, updates payment/order state, schedules `order_status` + n8n handoff. |
-| `sync-meta-catalog` | v6 | true | Pulls the full Meta catalog into `public.Product`. Manually triggered only (see §6). Now guarded against wiping the local catalog on an empty Meta response (v6), and quotes `retailer_id` defensively inside the stale-cleanup `or=(...)` filter. |
-| `retry-order-handoffs` | v1 | false | Called every 5 minutes by `pg_cron`; resends any due n8n order handoff. Can't do anything except resend what's already due, so it's safe without JWT auth. |
+| `razorpay-webhook` | v27 | false | Verifies Razorpay signature, processes `payment_link.paid`, updates payment/order state atomically via the `mark_payment_paid_and_advance_order` RPC (v27, see §14), self-heals a stuck order on duplicate/retried deliveries, schedules `order_status` + n8n handoff. |
+| `sync-meta-catalog` | v8 | true | Pulls the full Meta catalog into `public.Product`. Manually triggered only (see §6). Now guarded against wiping the local catalog on an empty Meta response (v6), and quotes `retailer_id` defensively inside the stale-cleanup `or=(...)` filter. |
+| `retry-order-handoffs` | v3 | false | Called every 5 minutes by `pg_cron`; resends any due n8n order handoff. Can't do anything except resend what's already due, so it's safe without JWT auth. |
+
+(Platform version counters for `razorpay-webhook`/`sync-meta-catalog`/`retry-order-handoffs` have again been observed to increment without any content change since the last handoff snapshot — confirmed via `download` + `git diff` showing zero diff before this session's edits. Content parity, not the raw version number, is what matters.)
 
 (Note: the platform's internal version counters for `razorpay-webhook`/`sync-meta-catalog`/`retry-order-handoffs` have been observed to increment without any content change — confirmed via `download` + `git diff` showing zero diff each time. Content, not the raw version number, is the parity signal that matters.)
 
@@ -81,7 +83,8 @@ WhatsApp cart → pending_payment order + order_items
 - Payment success is authoritative **only** via the verified `payment_link.paid` webhook. The callback redirect is not proof of payment.
 - `RAZORPAY_MODE` (`test`/`live`) selects which key/secret pair and webhook secret to use — both test and live credentials are configured, so switching modes is a one-word env var change. **Not yet hardened**: any value other than exactly `"live"` currently falls through to test mode, including a typo or unset var. This should be tightened before real launch.
 - Payment link expiry is currently **24 hours**. Razorpay's minimum is 15 minutes; WhatsApp's `order_details` expiration field minimum is 300 seconds. Tightening this to ~15 minutes (with `payment_link.expired`/`cancelled` handling) is still open work.
-- Order creation (order + order_items in two separate inserts) and address attachment → payment-link creation → message send are **not yet transactional** — a failure partway through can leave an order in an inconsistent state that a naive retry won't repair. Still open work.
+- **Fixed 24 Sep night**: order creation (order + order_items) is now atomic via the `create_order_with_items` Postgres RPC — a partial failure rolls back the whole order instead of leaving an empty `pending_payment` row behind. See §14.
+- Address attachment → payment-link creation → message send is still **not** wrapped in one transaction — a failure partway through (e.g. Razorpay API call fails after the address PATCH succeeds) can leave an order address-attached but without a payment link yet; a naive retry (re-running the Address Flow) won't repair this since the address is already attached. Lower risk than the order-creation/payment-webhook gaps that were just closed, since `createRazorpayPaymentLink` already checks for and reuses an existing pending payment record rather than creating a duplicate — still worth revisiting if this proves to bite in practice.
 - Callback URL after payment: `https://wa.me/919972267897` — confirm this is the bot's own number before go-live.
 
 ## 8. n8n order handoff (with retry)
@@ -125,12 +128,15 @@ Maintained separately in `Latest Address Flow JSON_7.3.md` — do not edit witho
 - `whatsapp-webhook`, `whatsapp-flow`, `meta-catalog-webhook` (now deleted) all verified Meta's HMAC signature on messaging/catalog webhooks from the start; `whatsapp-flow` now also verifies signatures on Flow endpoint calls (log mode, see §9).
 - Confirmed no other consumer (n8n, front-end, etc.) uses the Supabase public/anon key — n8n has no Supabase node.
 
-**Fixed 24 Sep evening (this session):**
+**Fixed 24 Sep evening:**
 - Flow signature check now in `enforce` mode.
 - Flow tokens are now HMAC-signed and verified (`FLOW_TOKEN_SECRET`) — order/profile lookups by flow token are cryptographically bound to what we actually issued.
 
+**Fixed 24 Sep night (this session):**
+- Order creation and payment→order-processing advancement are now atomic (three new `security invoker` Postgres RPC functions, `EXECUTE` restricted to `service_role`) instead of separate REST calls that could partially fail — see §14.
+
 **Still open (see the outstanding-work list, §14):**
-- Order/payment writes not transactional; partial-failure states possible.
+- Address attachment → payment-link creation → message send still isn't wrapped in one transaction (lower risk than the order-creation/payment-webhook gaps just closed — see §7).
 - `RAZORPAY_MODE` isn't strictly validated.
 - Leaked-password protection disabled (irrelevant until staff log in via a front-end).
 - Every WhatsApp user currently gets a hidden Supabase Auth account with a fake email — fine for now, but should be removed before a staff front-end exists, so the user list isn't polluted with customer entries.
@@ -153,16 +159,28 @@ Orders: ~125 (sequence has one gap from a retried insert — normal). Order item
 
 All four: esbuild-bundle-checked, deployed via `npx supabase functions deploy ... --use-api`, active versions verified via `list_edge_functions`, re-downloaded and `git diff`-confirmed byte-identical to the repo, committed and pushed to `cursor/production-hardening`.
 
+**Done, 24 Sep night:**
+
+5. ~~Transactional order creation + self-healing retry for the payment webhook~~ — done. New migration (`20260924155516_add_transactional_order_and_payment_rpcs.sql`) adds three Postgres functions, all `security invoker` with `search_path` pinned to `''` and `EXECUTE` revoked from `anon`/`authenticated`/`public`, granted only to `service_role`:
+   - `create_order_with_items(...)` — inserts `orders` + `order_items` in one transaction; a partial failure (bad item data) now rolls back the order row too instead of leaving an empty `pending_payment` order behind that would silently swallow every future retry (dedup is keyed on `whatsapp_message_id`). Also absorbs the `whatsapp_message_id` duplicate-insert race that used to need a 409 + re-select in `whatsapp-webhook`.
+   - `advance_order_to_processing(...)` — idempotent, only moves an order forward to `processing`, never regresses one already `processing`/`shipped`/`delivered`/`cancelled`.
+   - `mark_payment_paid_and_advance_order(...)` — updates `payments` and advances the order in one transaction, so a payment can never end up `paid` while its order stays stuck in `pending_payment`.
+   - `whatsapp-webhook`'s `createOrderFromWhatsAppCart` now calls `create_order_with_items` via RPC instead of two separate REST inserts.
+   - `razorpay-webhook`'s main `payment_link.paid` path now calls `mark_payment_paid_and_advance_order` via RPC instead of two separate PATCHes. **Both** duplicate-detection branches (by `x-razorpay-event-id`, and by matching `provider_payment_id`) now call `advance_order_to_processing` as a self-heal step before scheduling the `order_status` message/n8n handoff — this closes the actual gap described above: previously, if the order-status PATCH failed after the payment PATCH succeeded, every subsequent retried/duplicate webhook delivery hit a shortcut branch that re-sent messaging but never re-attempted the order update, so the order stayed stuck forever even though Razorpay does retry on non-2xx.
+   - Verified in rolled-back transactions against live (test) data before deploying: invalid item data rolls back the whole order insert with zero rows left behind, a duplicate `whatsapp_message_id` returns the existing order instead of creating a second row, and `advance_order_to_processing` never regresses an order already past `pending_payment`.
+   - Checked live data first: no existing orders had zero `order_items`, and no `payments.status='paid'` rows had a non-advanced order — the bug was a documented gap, not yet a live incident.
+   - esbuild-bundle-checked, deployed (`whatsapp-webhook` v87, `razorpay-webhook` v27), re-downloaded and `git diff`-confirmed byte-identical, committed and pushed to `cursor/production-hardening`.
+   - **Not yet live-tested with a real WhatsApp order + real Razorpay payment** (needs an actual test message/payment, which requires acting through the real WhatsApp app) — do this next before moving on, per the regression checklist in `WhatsApp_Flow_Error_Prevention_Guide.md` §15.
+
 **Still open, in rough priority order:**
 
-1. Transactional order creation + self-healing retry for the payment webhook (payment "paid" but order stuck "pending_payment" on partial failure).
-2. Tighten payment link + `order_details` expiry to ~15 minutes; handle `payment_link.expired`/`cancelled`.
-3. Production config hardening: strict `RAZORPAY_MODE` validation, permanent (non-temporary) WhatsApp system-user access token, confirm all hard-coded IDs (see table in `WhatsApp_Flow_Error_Prevention_Guide.md`) are the real production values, reject an empty `WHATSAPP_VERIFY_TOKEN`, enable MFA on the Supabase account.
-4. Split `whatsapp-webhook` into multiple files under one function (maintainability only, no behavior change).
-5. Before a staff front-end: rename `Product`/`Profile`/`whatsAppUserId` to snake_case, detach `Profile` from `auth.users` and stop creating a hidden Auth account per WhatsApp customer, add staff-role RLS policies.
-6. Decide on the Supabase plan (Free → Pro) before treating this as a real production launch; re-run advisors and wipe test data at that point.
-7. Once confident no legacy unsigned flow tokens remain in use (24h+ after the signed-token deploy with no `console.warn` legacy matches in logs), remove the legacy-token fallback branches in `whatsapp-flow` for full enforcement.
+1. Tighten payment link + `order_details` expiry to ~15 minutes; handle `payment_link.expired`/`cancelled`.
+2. Production config hardening: strict `RAZORPAY_MODE` validation, permanent (non-temporary) WhatsApp system-user access token, confirm all hard-coded IDs (see table in `WhatsApp_Flow_Error_Prevention_Guide.md`) are the real production values, reject an empty `WHATSAPP_VERIFY_TOKEN`, enable MFA on the Supabase account.
+3. Split `whatsapp-webhook` into multiple files under one function (maintainability only, no behavior change).
+4. Before a staff front-end: rename `Product`/`Profile`/`whatsAppUserId` to snake_case, detach `Profile` from `auth.users` and stop creating a hidden Auth account per WhatsApp customer, add staff-role RLS policies.
+5. Decide on the Supabase plan (Free → Pro) before treating this as a real production launch; re-run advisors and wipe test data at that point.
+6. Once confident no legacy unsigned flow tokens remain in use (24h+ after the signed-token deploy with no `console.warn` legacy matches in logs), remove the legacy-token fallback branches in `whatsapp-flow` for full enforcement.
 
 ## 15. Continuation prompt
 
-Continue the WhatsApp Flow App from the state dated 24 September 2026 (evening). The GitHub repo (currently `cursor/production-hardening`, one merge away from `main`) and the live Supabase project (`faoomjgkofqrdajaftjd`) are kept in sync — inspect both before changing anything, and re-confirm parity with `supabase functions download --use-api` + `git diff` after any manual edit. Current active functions: `whatsapp-webhook` v86, `whatsapp-flow` v47, `razorpay-webhook` v24, `sync-meta-catalog` v6, `retry-order-handoffs` v1. `FLOW_SIGNATURE_MODE` is `enforce`; flow tokens are HMAC-signed via `FLOW_TOKEN_SECRET`. The Address Flow v7.3 is a protected working baseline. Catalog sync is now manual-only. See §14 above for the prioritized outstanding-work list — items 1/4/6/7 (as originally numbered) are done; start with transactional order creation + self-healing payment-webhook retry next. Make one focused change at a time, deploy the complete function via the CLI, verify the active version, commit/push, and test the real runtime path before moving to the next item.
+Continue the WhatsApp Flow App from the state dated 24 September 2026 (night). The GitHub repo (currently `cursor/production-hardening`, one merge away from `main`) and the live Supabase project (`faoomjgkofqrdajaftjd`) are kept in sync — inspect both before changing anything, and re-confirm parity with `supabase functions download --use-api` + `git diff` after any manual edit. Current active functions: `whatsapp-webhook` v87, `whatsapp-flow` v47, `razorpay-webhook` v27, `sync-meta-catalog` v8, `retry-order-handoffs` v3 (platform version counters drift upward without content changes — content parity via `git diff` is what matters, confirmed). `FLOW_SIGNATURE_MODE` is `enforce`; flow tokens are HMAC-signed via `FLOW_TOKEN_SECRET`. Order creation and payment-webhook order-advancement are now atomic via three new Postgres RPC functions (migration `20260924155516`) with built-in self-healing on duplicate/retried payment webhooks. The Address Flow v7.3 is a protected working baseline. Catalog sync is now manual-only. See §14 above for the prioritized outstanding-work list. **First priority**: live-test the new transactional order creation + self-healing payment webhook with a real WhatsApp test order and a real (test-mode) Razorpay payment before starting anything else — it has not yet been exercised by real traffic. Then continue with payment-link/order_details expiry tightening. Make one focused change at a time, deploy the complete function via the CLI, verify the active version, commit/push, and test the real runtime path before moving to the next item.
