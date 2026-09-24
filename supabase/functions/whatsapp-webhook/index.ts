@@ -15,6 +15,8 @@ const RAZORPAY_KEY_ID=Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_ID"
 const RAZORPAY_KEY_SECRET=Deno.env.get(RAZORPAY_MODE==="live"?"RAZORPAY_LIVE_KEY_SECRET":"RAZORPAY_TEST_KEY_SECRET");
 const RAZORPAY_IS_TEST=RAZORPAY_MODE!=="live";
 const RAZORPAY_CALLBACK_URL="https://wa.me/919972267897";
+const FLOW_TOKEN_SECRET=Deno.env.get("FLOW_TOKEN_SECRET")??"";
+const FLOW_TOKEN_TTL_SECONDS=24*60*60;
 const ADDRESS_TEMPLATE="address",REGISTRATION_TEMPLATE="registration",UPDATE_PERSONAL_INFO_TEMPLATE="update_personal_info",MAIN_MENU_TEMPLATE="main_menu",PLACE_NEW_ORDER_TEMPLATE="place_new_order",FULL_CATALOGUE_TEMPLATE="full_catalogue",TEMPLATE_LANGUAGE="en";
 const MAX_ORDER_MESSAGE_AGE_SECONDS=24*60*60;
 
@@ -27,6 +29,28 @@ function hexToBytes(hex:string){
     bytes[i]=value;
   }
   return bytes;
+}
+
+async function hmacHex(secret:string,data:string):Promise<string>{
+  const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  const sig=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(data)));
+  return Array.from(sig).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+// Signed flow tokens: <prefix>:<part1>:<part2>:...:<nonce>:<expiry_unix>:<hmac_sha256_hex>.
+// The HMAC binds every part (order id / wa_id included) so a party who doesn't hold
+// FLOW_TOKEN_SECRET cannot forge a token pointing at someone else's order or profile, even
+// though they may be able to trigger arbitrarily-shaped Flow endpoint requests with a
+// valid Meta signature (Meta's signature only proves the request came from its
+// infrastructure, not that the flow_token content is the one we originally issued).
+// Verified by parseSignedToken() in whatsapp-flow.
+async function signFlowToken(prefix:string,parts:string[]):Promise<string>{
+  if(!FLOW_TOKEN_SECRET)throw new Error("FLOW_TOKEN_SECRET is not configured");
+  const nonce=crypto.randomUUID();
+  const expiry=Math.floor(Date.now()/1000)+FLOW_TOKEN_TTL_SECONDS;
+  const payload=[prefix,...parts,nonce,String(expiry)].join(":");
+  const sig=await hmacHex(FLOW_TOKEN_SECRET,payload);
+  return `${payload}:${sig}`;
 }
 
 async function verifyMetaSignature(body:string,signatureHeader:string|null){
@@ -311,8 +335,16 @@ async function sendAddressFlowTemplate(to:string,flowToken:string){
 }
 
 function parseAddressFlowToken(token:string){
-  const match=/^checkout-address:([0-9]+):([a-f0-9-]+)$/i.exec(token);
-  return match?{orderId:Number(match[1]),nonce:match[2]}:null;
+  // Used only to pick which specific pending order an nfm_reply address completion
+  // belongs to (falls back to "most recent pending order for this waId" if this doesn't
+  // match). Not a security boundary by itself -- attachAddressToOrder() always re-checks
+  // whatsapp_user_id against the real sender's waId from the verified messaging webhook,
+  // so a tampered order id here can at most fail to match and error out safely, never
+  // attach to someone else's order.
+  const signed=/^checkout-address:([0-9]+):[0-9]{8,20}:[a-f0-9-]+:[0-9]+:[a-f0-9]+$/i.exec(token);
+  if(signed)return{orderId:Number(signed[1])};
+  const legacy=/^checkout-address:([0-9]+):([a-f0-9-]+)$/i.exec(token);
+  return legacy?{orderId:Number(legacy[1])}:null;
 }
 
 async function getPendingOrderForWaId(waId:string){
@@ -529,7 +561,7 @@ async function createOrderFromWhatsAppCart(waId:string,m:any){
   });
   if(!itemInsert.ok)throw new Error(`Order items creation failed: ${await itemInsert.text()}`);
 
-  const flowToken=`checkout-address:${order.id}:${crypto.randomUUID()}`;
+  const flowToken=await signFlowToken("checkout-address",[String(order.id),waId]);
   await sendAddressFlowTemplate(waId,flowToken);
 }
 
@@ -615,7 +647,7 @@ Deno.serve(async(req:Request)=>{
             const profile=await getProfile(waId);
             if(!profile?.name)continue;
             if(payload==="place_new_order"||payload==="place_order"||payload==="place_an_order"||text==="place a new order")await placeNewOrder(waId);
-            if(payload==="settings"||text==="settings")await updatePersonalInfo(waId,`update-profile:${waId}:${crypto.randomUUID()}`);
+            if(payload==="settings"||text==="settings")await updatePersonalInfo(waId,await signFlowToken("update-profile",[waId]));
             if(isFullCatalogueAction(payload)||isFullCatalogueAction(text))await fullCatalogue(waId);
             if(payload==="popular_products"||payload==="popular_oil_products"||text==="popular products"||text==="popular oil products")await popularProducts(waId);
           }
@@ -627,7 +659,7 @@ Deno.serve(async(req:Request)=>{
             if(id==="place_new_order"||id==="place_order"||id==="place_an_order"||title==="place a new order")await placeNewOrder(waId);
             if(isFullCatalogueAction(id)||isFullCatalogueAction(title))await fullCatalogue(waId);
             if(id==="popular_products"||id==="popular_oil_products"||title==="popular products"||title==="popular oil products")await popularProducts(waId);
-            if(id==="settings"||title==="settings")await updatePersonalInfo(waId,`update-profile:${waId}:${crypto.randomUUID()}`);
+            if(id==="settings"||title==="settings")await updatePersonalInfo(waId,await signFlowToken("update-profile",[waId]));
           }
         }
       }
