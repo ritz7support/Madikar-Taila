@@ -3,7 +3,11 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const PRIVATE_KEY_PEM = Deno.env.get("WHATSAPP_FLOW_PRIVATE_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? "";
+const SIGNATURE_MODE = (Deno.env.get("FLOW_SIGNATURE_MODE") ?? "log").toLowerCase();
 
+function hexToBytes(hex: string): Uint8Array | null { if (hex.length % 2 !== 0) return null; const bytes = new Uint8Array(hex.length / 2); for (let i = 0; i < bytes.length; i++) { const value = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16); if (Number.isNaN(value)) return null; bytes[i] = value; } return bytes; }
+async function isValidMetaSignature(body: string, signatureHeader: string | null): Promise<boolean> { if (!APP_SECRET || !signatureHeader?.startsWith("sha256=")) return false; const expected = hexToBytes(signatureHeader.slice(7)); if (!expected) return false; const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); const actual = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body))); if (actual.length !== expected.length) return false; let diff = 0; for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i]; return diff === 0; }
 function base64ToBytes(value: string): Uint8Array { const binary = atob(value); return Uint8Array.from(binary, (char) => char.charCodeAt(0)); }
 function bytesToBase64(bytes: Uint8Array): string { let binary = ""; const chunkSize = 0x8000; for (let i = 0; i < bytes.length; i += chunkSize) binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize)); return btoa(binary); }
 function pemToArrayBuffer(pem: string): ArrayBuffer { const base64 = pem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "").replace(/\s/g, ""); return base64ToBytes(base64).buffer; }
@@ -168,7 +172,11 @@ async function handleDataExchange(body: any) {
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
   try {
-    const payload = await req.json();
+    const rawBody = await req.text();
+    const signatureValid = await isValidMetaSignature(rawBody, req.headers.get("x-hub-signature-256"));
+    console.log("Flow request signature:", JSON.stringify({ valid: signatureValid, mode: SIGNATURE_MODE }));
+    if (!signatureValid && SIGNATURE_MODE === "enforce") return new Response("Invalid signature", { status: 432 });
+    const payload = JSON.parse(rawBody);
     if (!payload?.encrypted_aes_key || !payload?.encrypted_flow_data || !payload?.initial_vector) return new Response("Invalid Flow request", { status: 400 });
     const { body, aesKey, iv } = await decryptRequest(payload);
     console.log("WhatsApp Flow action:", body.action, "screen:", body.screen, "flow_token:", body.flow_token ?? "", "data:", JSON.stringify(body.data ?? {}));
