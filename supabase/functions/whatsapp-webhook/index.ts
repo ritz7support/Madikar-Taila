@@ -245,7 +245,7 @@ async function menu(to:string,name:string){
     interactive:{
       type:"button",
       header:{type:"text",text:"Main menu"},
-      body:{text:`Hi *${name}*!\nWhat would you like to do today?`},
+      body:{text:`Hi *${name}*!\nWhat would you like to do today?\n\nNote: You can always type "Hi" for the main menu`},
       action:{
         buttons:[
           {type:"reply",reply:{id:"place_new_order",title:"Place a new order"}},
