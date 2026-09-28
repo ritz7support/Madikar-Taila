@@ -20,7 +20,7 @@ const RAZORPAY_IS_TEST=RAZORPAY_MODE!=="live";
 const RAZORPAY_CALLBACK_URL="https://wa.me/919972267897";
 const FLOW_TOKEN_SECRET=Deno.env.get("FLOW_TOKEN_SECRET")??"";
 const FLOW_TOKEN_TTL_SECONDS=24*60*60;
-const ADDRESS_TEMPLATE="address",REGISTRATION_TEMPLATE="registration",UPDATE_PERSONAL_INFO_TEMPLATE="update_personal_info",MAIN_MENU_TEMPLATE="main_menu",PLACE_NEW_ORDER_TEMPLATE="place_new_order",FULL_CATALOGUE_TEMPLATE="full_catalogue",TEMPLATE_LANGUAGE="en";
+const ADDRESS_TEMPLATE="address",CHANGE_ADDRESS_TEMPLATE="change_address",REGISTRATION_TEMPLATE="registration",UPDATE_PERSONAL_INFO_TEMPLATE="update_personal_info",MAIN_MENU_TEMPLATE="main_menu",PLACE_NEW_ORDER_TEMPLATE="place_new_order",FULL_CATALOGUE_TEMPLATE="full_catalogue",TEMPLATE_LANGUAGE="en";
 const MAX_ORDER_MESSAGE_AGE_SECONDS=24*60*60;
 // Shared expiry window for the Razorpay Payment Link *and* the WhatsApp order_details
 // "order.expiration" field, which Meta's payments docs say should match. Razorpay rejects
@@ -331,13 +331,13 @@ async function getExistingProductByRetailerId(id:string){
   return rows[0]??null;
 }
 
-async function sendAddressFlowTemplate(to:string,flowToken:string){
+async function sendAddressFlowTemplate(to:string,flowToken:string,templateName:string=ADDRESS_TEMPLATE){
   return send({
     messaging_product:"whatsapp",
     to,
     type:"template",
     template:{
-      name:ADDRESS_TEMPLATE,
+      name:templateName,
       language:{code:TEMPLATE_LANGUAGE},
       components:[{
         type:"button",
@@ -370,7 +370,14 @@ async function getPendingOrderForWaId(waId:string){
 }
 
 async function attachAddressToOrder(orderId:number,waId:string,addressId:string){
-  const r=await db(`/rest/v1/orders?id=eq.${encodeURIComponent(String(orderId))}&whatsapp_user_id=eq.${encodeURIComponent(waId)}&status=eq.pending_payment&address_id=is.null`,{
+  const addressR=await db(`/rest/v1/addresses?select=profile_id&id=eq.${encodeURIComponent(addressId)}&is_active=eq.true&limit=1`);
+  if(!addressR.ok)throw new Error(`Address lookup failed: ${await addressR.text()}`);
+  const addresses=await addressR.json();
+  const profileId=addresses[0]?.profile_id;
+  if(!profileId)throw new Error("Selected address is not active or does not exist");
+  // The profile and WhatsApp sender must both match the unpaid order. This also permits
+  // replacing an address that was already selected, but never after payment advances it.
+  const r=await db(`/rest/v1/orders?id=eq.${encodeURIComponent(String(orderId))}&profile_id=eq.${encodeURIComponent(profileId)}&whatsapp_user_id=eq.${encodeURIComponent(waId)}&status=eq.pending_payment`,{
     method:"PATCH",
     headers:{Prefer:"return=representation"},
     body:JSON.stringify({address_id:addressId})
@@ -624,6 +631,8 @@ async function handleAddressFlowCompletion(waId:string,data:any){
     createRazorpayPaymentLink(order,waId)
   ]);
   await send(buildOrderDetailsPayload(waId,order,items,payment));
+  const changeAddressToken=await signFlowToken("checkout-address",[String(order.id),waId]);
+  await sendAddressFlowTemplate(waId,changeAddressToken,CHANGE_ADDRESS_TEMPLATE);
 }
 
 

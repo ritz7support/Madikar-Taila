@@ -168,11 +168,11 @@ Sent right after a WhatsApp cart order is created.
 }
 ```
 
-**Updated 24 Sep evening**: the token is now `checkout-address:<ORDER_ID>:<WA_ID>:<NONCE>:<EXPIRY_UNIX>:<HMAC_SHA256_HEX>` — HMAC-signed by `whatsapp-webhook` (`FLOW_TOKEN_SECRET`) and verified by `whatsapp-flow` before the embedded order id is trusted for address-book lookups. The final address-attach `PATCH` in `whatsapp-webhook` is additionally, and independently, constrained by `whatsapp_user_id` + `status = pending_payment` + `address_id IS NULL`. See handoff doc §9/§14.
+The `checkout-address:<ORDER_ID>:<WA_ID>:<NONCE>:<EXPIRY_UNIX>:<HMAC_SHA256_HEX>` token is HMAC-signed by `whatsapp-webhook` (`FLOW_TOKEN_SECRET`) and verified by `whatsapp-flow` before the embedded order id is trusted for address-book lookups. The webhook checks that the selected address is active and belongs to the order's profile; it only attaches or replaces the address while the order belongs to the sender and remains `pending_payment`. See handoff doc §9/§14.
 
 ## 9. Review and Pay (order_details / review_and_pay)
 
-Sent once the address is attached and a Razorpay Payment Link exists.
+Sent whenever an address is attached or changed while the order is awaiting payment, once a Razorpay Payment Link exists. The `change_address` template below is sent afterward.
 
 ```json
 {
@@ -211,9 +211,31 @@ Sent once the address is attached and a Razorpay Payment Link exists.
 }
 ```
 
-**Not yet present but planned**: an `order.expiration` object (`{timestamp, description}`, minimum 300 seconds) matching the Razorpay Payment Link's `expire_by`. Currently the link lasts 24h and the card has no expiration at all — both should be tightened to ~15 minutes together (see handoff doc §7/§14).
+The payload includes `order.expiration` when the payment link has at least 300 seconds remaining. Its timestamp matches the Razorpay Payment Link's `expire_by` (see handoff doc §14).
 
 Dynamic field mapping: `reference_id`←`orders.reference_id`, `catalog_id`←`orders.catalog_id`, `total_amount`←`orders.total` (×100), `items[].retailer_id`←`order_items.product_retailer_id`, `items[].name`←`order_items.product_name` (falls back to `retailer_id`), `items[].amount`←`order_items.unit_price` (×100), `items[].quantity`←`order_items.quantity`, `subtotal/shipping/discount`←same-named `orders` columns, `payment_settings[].payment_link.uri`←`payments.provider_payment_link_url`.
+
+## 9a. Change Address Flow template
+
+Sent immediately after each Review and Pay message. Its Flow button opens the same Address Flow as the original `address` template, with a fresh signed token for the same order. Selecting another address updates only an order still in `pending_payment`, then sends a new Review and Pay message followed by another `change_address` template.
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "<WA_PHONE_NUMBER>",
+  "type": "template",
+  "template": {
+    "name": "change_address",
+    "language": { "code": "en" },
+    "components": [{
+      "type": "button",
+      "sub_type": "flow",
+      "index": "0",
+      "parameters": [{ "type": "action", "action": { "flow_token": "checkout-address:<ORDER_ID>:<WA_ID>:<NONCE>:<EXPIRY_UNIX>:<HMAC_SHA256_HEX>" } }]
+    }]
+  }
+}
+```
 
 ## 10. Payment received (order_status), sent by `razorpay-webhook`
 
@@ -248,6 +270,7 @@ Sent (with up to 3 retries) after the verified `payment_link.paid` webhook moves
 - `full_catalogue` — template with CATALOG button
 - `product_list` — interactive: Popular products (live)
 - `address` — template with Flow button and `checkout-address` token
+- `change_address` — template with Flow button and a fresh `checkout-address` token, sent after Review and Pay
 - Main menu — interactive button message: Place a new order, Settings
 - `order_details`/`review_and_pay` — interactive checkout/payment message
 - `order_status` — interactive payment-confirmation message (sent by `razorpay-webhook`, not `whatsapp-webhook`)
