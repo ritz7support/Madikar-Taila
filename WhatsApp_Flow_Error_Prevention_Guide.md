@@ -98,15 +98,15 @@ Edge Functions run in whichever region is closest to the *caller* by default. Me
 
 `checkout-address`/`update-profile` flow tokens were plain (order id / wa_id embedded unsigned). Meta's Flow endpoint request signature only proves a request came from Meta's infrastructure — it says nothing about whether the `flow_token` content inside is the one we actually issued, since a party with WABA access (e.g. Business Manager's Flow preview/test tooling) can trigger arbitrarily-shaped, validly-signed requests with a hand-picked `flow_token`. Fix: HMAC-sign every token (`FLOW_TOKEN_SECRET`, new project secret) as `<prefix>:<parts...>:<nonce>:<expiry_unix>:<hmac_sha256_hex>`; `whatsapp-flow` verifies the signature (constant-time compare) and expiry before trusting the embedded order id/wa_id, returning `null` — never an error — on any mismatch, so a forged token degrades to an anonymous/empty Flow screen instead of leaking another customer's addresses. Rolled out safely in dependency order (verifier first, purely additive with a legacy-unsigned fallback; issuer second, switches to signed-only) so there was never a window where one side didn't understand the other's tokens. Verified locally (sign/verify round-trip, tamper detection, expiry enforcement) before deploying, then confirmed live with a real test order end-to-end.
 
-## 14. Current production baseline (24 Sep 2026, night)
+## 14. Production baseline (updated 28 Sep 2026)
 
-- `whatsapp-webhook` v89, `whatsapp-flow` v47, `razorpay-webhook` v29, `sync-meta-catalog` v8, `retry-order-handoffs` v3 (platform version counters drift upward without content changes on some functions — content parity via `git diff`, not the raw number, is what was confirmed).
+- `whatsapp-webhook` v92, `whatsapp-flow` v48, `razorpay-webhook` v30, `sync-meta-catalog` v9, `retry-order-handoffs` v4 (checked 28 Sep; platform version counters can advance without content changes, so compare source when parity matters).
 - `FLOW_SIGNATURE_MODE` is now `enforce` (was `log`). `FLOW_TOKEN_SECRET` (new) signs/verifies flow tokens.
 - Order creation (`whatsapp-webhook`) and payment→order advancement (`razorpay-webhook`) are atomic via three Postgres RPC functions (migration `20260924155516_add_transactional_order_and_payment_rpcs.sql`) — see §16. **Live-tested successfully** on a real test order (id 132) this session.
-- Payment link + `order_details` expiry tightened from 24h to ~16 minutes, with `payment_link.expired`/`cancelled` handling in `razorpay-webhook` (migration `20260924181608_add_expired_at_to_payments.sql`) — see §17. Not yet live-tested.
+- Payment link + `order_details` expiry tightened from 24h to ~16 minutes, with `payment_link.expired`/`cancelled` handling in `razorpay-webhook` (migration `20260924181608_add_expired_at_to_payments.sql`) — see §17. Paid path live-tested; real expired/cancelled path remains untested.
 - Address Flow JSON v7.3 (unchanged, protected).
 - Both functions Meta calls directly pinned to `ap-south-1`.
-- `cursor/production-hardening` branch of the GitHub repo confirmed byte-identical to deployed source (one merge behind having this become `main`).
+- `cursor/production-hardening` branch of the GitHub repo is the current bot branch; the latest bot function source was confirmed identical to deployed source. Do not assume `main` has these changes.
 
 ## 15. Regression checklist
 
@@ -116,7 +116,7 @@ Edge Functions run in whichever region is closest to the *caller* by default. Me
 4. `esbuild`-bundle-check, then deploy the complete function via the CLI.
 5. Verify the active version and `verify_jwt` setting via `list_edge_functions`/`get_edge_function`.
 6. Re-download and `git diff` to confirm parity, then commit/push.
-7. Test the real WhatsApp path: new user → registration → main menu; Settings → update info → Profile persists; catalog browse → cart; cart → address Flow → address attached → review_and_pay; a real (test-mode) Razorpay payment → `payment_link.paid` → order `processing` → "Payment received" message → n8n handoff logged as `sent`.
+7. Test the real WhatsApp path: new user → registration → main menu; Settings → update info → Profile persists; catalog browse → cart; cart → address Flow → address attached → review_and_pay → change_address; select a replacement address while `pending_payment` → updated review_and_pay → change_address; a real Razorpay payment → `payment_link.paid` → order `processing` → "Payment received" message → n8n handoff logged as `sent`.
 8. For webhook changes, test signature/verification behavior (valid and invalid) separately from business logic.
 9. For any change to a function Meta calls directly, consider log-first/enforce-second rollout (see §11) rather than enforcing on day one.
 

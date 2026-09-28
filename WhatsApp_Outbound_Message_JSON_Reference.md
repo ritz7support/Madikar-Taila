@@ -1,6 +1,6 @@
 # WhatsApp Outbound Message JSON Reference
 
-Last updated: 24 September 2026 (evening), reconstructed directly from the deployed source of `whatsapp-webhook` v83 and `razorpay-webhook` v24. Supersedes `WhatsApp_Outbound_Message_JSON_Reference_23Sep2026_v6.docx` (deleted — it was stale and partially out of date, e.g. it still implied "View oil" was reachable from the menu). The "View oil" dead code (`viewOil()`/`OIL_PRODUCT_IDS`, §7 below) has since been deleted from `whatsapp-webhook` entirely (v83) — kept in this doc's history for context, removed from the current inventory (§11).
+Last updated: 28 September 2026. Current bot baseline: `whatsapp-webhook` v92 and `razorpay-webhook` v30. Supersedes `WhatsApp_Outbound_Message_JSON_Reference_23Sep2026_v6.docx` (deleted — it was stale). The "View oil" dead code (`viewOil()`/`OIL_PRODUCT_IDS`, §7 below) was deleted in v83 — kept in this doc's history for context, removed from the current inventory (§11).
 
 The deployed function source is the runtime source of truth. Placeholder values below (`<...>`) are illustrative.
 
@@ -277,7 +277,7 @@ Sent (with up to 3 retries) after the verified `payment_link.paid` webhook moves
 
 ## 12. Runtime notes
 
-- `whatsapp-webhook` v86 is current as of 24 Sep 2026 (evening); `whatsapp-flow` v47; `razorpay-webhook` v24.
+- Versions checked 28 Sep 2026: `whatsapp-webhook` v92, `whatsapp-flow` v48, `razorpay-webhook` v30. Compare deployed source for content parity; platform version counters may advance without a code change.
 - WhatsApp API version `v25.0`; catalog ID `1515875913870520`; phone number ID `1327606333760280` (all overridable via env vars of the same name, except the popular-product-set ID and the oil-product IDs, which are hard-coded).
 - Razorpay Standard Payment Link URL is dynamic, from `payments.provider_payment_link_url`. Payment success is finalized only by the verified `payment_link.paid` webhook.
 - Template names, language, button types and approved components must match the configured WhatsApp Business Account templates exactly.

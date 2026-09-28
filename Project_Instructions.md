@@ -1,22 +1,26 @@
-# WhatsApp Flow App — Cursor Instructions
+# WhatsApp Flow App — Project Instructions
 
-Last updated: 24 September 2026 (night).
+Last updated: 28 September 2026.
+
+These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. The git branch `cursor/production-hardening` is an ordinary branch; the name is historical and is not tied to Cursor.
 
 ## Runtime source of truth
-The GitHub repo (`cursor/production-hardening` branch, one merge away from `main`, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth and are kept in sync — the branch has been confirmed byte-for-byte identical to the deployed function source after every change this session. Treat a mismatch between them as a bug to investigate, not something to silently paper over.
+The GitHub repo (`cursor/production-hardening` branch, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth and are kept in sync — the branch's bot function source was confirmed identical to the deployed source after the latest bot change. Do not assume `main` contains the latest bot work. Treat a mismatch as a bug to investigate, not something to silently paper over.
 
 Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
-- whatsapp-webhook v89
-- whatsapp-flow v47
-- razorpay-webhook v29
-- sync-meta-catalog v8
-- retry-order-handoffs v3
+- whatsapp-webhook v92
+- whatsapp-flow v48
+- razorpay-webhook v30
+- sync-meta-catalog v9
+- retry-order-handoffs v4
 
 (Platform version counters drift upward without content changes on some of these — confirmed via `download` + `git diff` showing zero diff. Content parity is the signal that matters, not the raw number.)
 
 Order creation (`whatsapp-webhook`) and payment→order advancement (`razorpay-webhook`) are atomic via three Postgres RPC functions added in migration `20260924155516_add_transactional_order_and_payment_rpcs.sql` (`create_order_with_items`, `advance_order_to_processing`, `mark_payment_paid_and_advance_order`) — **live-tested successfully** on a real test order (24 Sep night), clean end-to-end.
 
-Payment link + `order_details` expiry is now ~16 minutes (was 24h), matching Razorpay's 15-minute floor with a small margin; `razorpay-webhook` now handles `payment_link.expired`/`cancelled` (migration `20260924181608_add_expired_at_to_payments.sql`). **Not yet exercised by a real expired/cancelled payment link** — do that before further changes.
+Payment link + `order_details` expiry is now ~16 minutes (was 24h), matching Razorpay's 15-minute floor with a small margin; `razorpay-webhook` now handles `payment_link.expired`/`cancelled` (migration `20260924181608_add_expired_at_to_payments.sql`). **The expired/cancelled path has not yet been exercised by a real link.** This remains an outstanding bot test when bot work resumes.
+
+The main menu includes `Note: You can always type "Hi" for the main menu`. After an address is selected, the bot sends `review_and_pay`, then the approved `change_address` (`en`) Flow template. A replacement address is accepted only for an order still in `pending_payment`; the selected address must be active and belong to that order's profile. Live order 135 confirmed address replacement, a subsequent live-mode payment, the `processing` transition, the payment-confirmation message, and the n8n handoff. See `WEBSITE_HANDOFF.md` for the current website handoff.
 
 `meta-catalog-webhook` has been deleted (catalog sync is now manual-only).
 
@@ -29,14 +33,14 @@ Payment link + `order_details` expiry is now ~16 minutes (was 24h), matching Raz
 6. Re-download and `git diff` to confirm the repo still matches, then commit and push.
 7. Test the real runtime path.
 
-No Docker/`gh` CLI on this machine — use `npx supabase ...` and plain `git`.
+This development machine has no Docker and no `gh` CLI. Use `npx supabase ...` and plain `git`. Other machines may differ; don't assume those tools are missing everywhere, and don't assume they are installed here.
 
 ## Protected paths
 Do not modify the working Address Flow JSON (`Latest Address Flow JSON_7.3.md`) unless a specific Flow-layer problem is demonstrated.
 Protect:
 - registration
 - registration → main menu
-- cart → address Flow → address attachment
+- cart → address Flow → address attachment → review_and_pay → change_address → replacement address (while pending_payment)
 - Razorpay Payment Link → review_and_pay
 - Razorpay payment_link.paid → order/payment status
 - Settings → Update Personal Information
@@ -49,7 +53,7 @@ The automatic webhook chain (`meta-catalog-webhook`) has been retired and the fu
 `sync-meta-catalog`:
 - Uses Meta fields `retailer_id`, `name`, `description`, `url`. Maps `url` → `Product.product_link`.
 - Upserts by `(catalog_id, retailer_id)`.
-- Removes stale products after a successful full sync (known gap: doesn't yet guard against Meta returning zero products).
+- Removes stale products after a successful full sync; skips stale deletion when Meta returns zero products.
 - `verify_jwt=true` — only we call it, never Meta.
 
 ## Current Product schema
@@ -83,10 +87,14 @@ None remain — `whatsapp-flow-key-register-test` and `test-order-status` (menti
 
 ## Documents
 Use these project sources together:
+- `BOT_BACKEND_DO_NOT_TOUCH.md` — files, functions, and schema the WhatsApp bot depends on. Read this before any website or shared-backend work.
+- `WEBSITE_HANDOFF.md` — current website work boundary, starting point, and verified bot state.
 - `WhatsApp_Flow_Project_Handoff.md` — full current-state handoff, outstanding-work list, continuation prompt.
 - `WhatsApp_Outbound_Message_JSON_Reference.md` — every outbound WhatsApp message contract, reconstructed from the current deployed source.
 - `WhatsApp_Flow_Error_Prevention_Guide.md` — lessons learned, regression checklist, hard-coded values to confirm before launch.
 - `Latest Address Flow JSON_7.3.md` — protected Flow JSON, do not edit casually.
+
+`.cursor/` holds editor settings for Cursor only. Other tools can ignore it. It is not part of the bot runtime.
 
 (The three `.docx` files previously listed here have been deleted — they were stale as of 23 Sep and are fully superseded by the three `.md` files above.)
 
