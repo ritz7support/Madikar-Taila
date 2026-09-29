@@ -17,3 +17,7 @@ verify_jwt = true
 # Called by pg_cron; it only resends handoffs that are already due.
 [functions.retry-order-handoffs]
 verify_jwt = false
+
+# The Sites Worker authenticates to this website-only function with a signed request.
+[functions.madikar-store]
+verify_jwt = false

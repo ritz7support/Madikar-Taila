@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Store Admin | Madikar Taila</title>
+  <link rel="icon" href="assets/brand-stamp.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="admin.css">
+  <script src="admin.js" defer></script>
+</head>
+<body>
+  <header class="admin-header">
+    <a class="brand" href="/"><span class="brand-mark">M</span><span>Madikar Taila <small>Store admin</small></span></a>
+    <div class="header-actions"><span id="signed-in-email"></span><button id="copy-admin-link" type="button" hidden>Copy team link</button><button id="sign-out" type="button" hidden>Leave dashboard</button></div>
+  </header>
+  <main>
+    <section id="login-panel" class="login-panel">
+      <div class="login-copy"><p class="eyebrow">Team access</p><h1>Manage the store</h1><p>Open the private team link to manage products and orders. If you received an access code separately, enter it below.</p></div>
+      <form id="access-form" class="panel">
+        <label for="access-code">Team access code</label>
+        <input id="access-code" name="code" type="text" autocomplete="off" required placeholder="Paste access code">
+        <button type="submit" class="primary">Open dashboard</button>
+      </form>
+      <p id="login-status" class="status" role="status"></p>
+    </section>
+    <section id="dashboard" class="dashboard" hidden>
+      <div class="dashboard-heading"><div><p class="eyebrow">Store operations</p><h1>Dashboard</h1></div><a href="/" target="_blank" rel="noopener">View store ↗</a></div>
+      <nav class="tabs" aria-label="Dashboard sections">
+        <button type="button" class="selected" data-tab="products" aria-current="page">Products <span id="product-count"></span></button>
+        <button type="button" data-tab="orders">Orders</button>
+      </nav>
+      <p id="dashboard-status" class="status" role="status"></p>
+      <section id="products-panel" class="workspace">
+        <div class="section-heading"><div><h2>Products</h2><p>Store details, images, pack sizes, prices and availability come from Supabase.</p></div><button type="button" class="primary" id="add-product">Add product</button></div>
+        <div class="product-layout">
+          <div class="panel product-browser">
+            <label for="product-search">Find a product</label>
+            <input id="product-search" type="search" placeholder="Search name or category">
+            <div id="product-list" class="product-list"></div>
+          </div>
+          <div id="product-editor" class="panel product-editor"><p class="empty">Select a product to edit it.</p></div>
+        </div>
+      </section>
+      <section id="orders-panel" class="workspace" hidden>
+        <div class="section-heading"><div><h2>Orders</h2><p>WhatsApp orders appear here now. Website orders will join this list when store order saving is enabled.</p></div><button type="button" id="refresh-orders">Refresh</button></div>
+        <div class="filters"><label for="order-source">Source</label><select id="order-source"><option value="all">All sources</option><option value="store">Website</option><option value="whatsapp">WhatsApp</option></select></div>
+        <div id="orders-list" class="orders-list"></div>
+        <button type="button" id="load-more-orders" hidden>Load more orders</button>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

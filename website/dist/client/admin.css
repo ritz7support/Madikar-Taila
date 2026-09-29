@@ -1,0 +1,82 @@
+:root{font-family:Arial,Helvetica,sans-serif;color:#173321;background:#f5f2e9;font-size:16px}
+*{box-sizing:border-box}
+body{margin:0;min-width:320px}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.6}
+input,select,textarea{width:100%;padding:.72rem .8rem;border:1px solid #bdc7b9;border-radius:.55rem;background:#fff;color:#173321}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid #bf9c51;outline-offset:2px}
+label{display:block;font-weight:700;font-size:.9rem;margin-bottom:.4rem}
+button{border:1px solid #9da99b;border-radius:.55rem;background:#fff;color:#173321;padding:.65rem .9rem}
+button:hover{border-color:#173321}
+button.primary{border-color:#173321;background:#173321;color:#fff}
+button.primary:hover{background:#28563a}
+.admin-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem clamp(1rem,4vw,3rem);border-bottom:1px solid #d9dfd1;background:#fff}
+.brand{display:flex;align-items:center;gap:.7rem;text-decoration:none;color:inherit;font-family:Georgia,serif;font-size:1.35rem;font-weight:700}
+.brand small{display:block;font:600 .7rem Arial,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#5a715f}
+.brand-mark{display:grid;place-items:center;background:#173321;color:#f5e4b3;width:2.3rem;height:2.3rem;border-radius:50%}
+.header-actions{display:flex;align-items:center;gap:1rem;font-size:.85rem;overflow-wrap:anywhere}
+main{max-width:1440px;margin:0 auto;padding:clamp(1rem,3vw,2.5rem)}
+h1,h2,h3{font-family:Georgia,serif;font-weight:500;margin:.1rem 0 .7rem}
+h1{font-size:clamp(2rem,5vw,3rem)} h2{font-size:1.7rem} h3{font-size:1.22rem}
+p{line-height:1.5}
+.eyebrow{font-size:.75rem;letter-spacing:.18em;text-transform:uppercase;color:#6b784d;font-weight:800}
+.panel{background:#fff;border:1px solid #dce2d7;border-radius:1rem;padding:1.1rem;box-shadow:0 10px 35px #17332108}
+.login-panel{max-width:550px;margin:4vh auto}
+.login-copy p:last-child{color:#506652;max-width:42ch}
+.login-panel form{margin-top:1rem}
+.login-panel form button{margin-top:1rem;width:100%}
+.status{min-height:1.4em;color:#506652;font-size:.9rem}
+.status[data-tone="error"]{color:#9d3424}
+.status[data-tone="success"]{color:#28623b}
+.dashboard-heading,.section-heading{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.dashboard-heading a{color:#173321;font-weight:700}
+.section-heading p{margin:.2rem 0 1rem;color:#506652}
+.tabs{display:flex;gap:.35rem;border-bottom:1px solid #cbd6c8;margin:1rem 0 1.5rem}
+.tabs button{border:0;border-radius:.55rem .55rem 0 0;background:transparent}
+.tabs button.selected{background:#173321;color:#fff}
+.workspace{margin-bottom:2rem}
+.product-layout{display:grid;grid-template-columns:minmax(260px,350px) minmax(0,1fr);gap:1rem;align-items:start}
+.product-browser{position:sticky;top:1rem}
+.product-list{max-height:65vh;overflow:auto;margin-top:1rem}
+.product-row{width:100%;display:flex;align-items:center;gap:.65rem;text-align:left;border:0;border-bottom:1px solid #e8ece6;border-radius:0;padding:.6rem .2rem}
+.product-row.selected{background:#eff4eb}
+.product-row img{width:2.8rem;height:2.8rem;object-fit:cover;border-radius:.35rem;background:#e7e3d5}
+.product-row strong,.product-row small{display:block}
+.product-row small{color:#647564;margin-top:.2rem}
+.empty{padding:1rem;color:#657565}
+.editor-header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}
+.editor-header p{margin:0;color:#607161;font-size:.88rem}
+.editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.editor-grid .wide{grid-column:1/-1}
+.field{margin-bottom:1rem}
+.field small,.help{display:block;color:#667667;font-size:.82rem;margin-top:.3rem}
+textarea{min-height:6rem;resize:vertical}
+.image-row{display:grid;grid-template-columns:80px minmax(0,1fr) minmax(0,1fr) auto;gap:.6rem;align-items:end;margin:.6rem 0;padding:.6rem;background:#f7f8f4;border-radius:.6rem}
+.image-row img{width:80px;height:80px;object-fit:cover;border-radius:.4rem}
+.image-row button{align-self:end}
+.image-actions,.form-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.8rem 0}
+.upload-input{max-width:320px}
+.pack-table{width:100%;border-collapse:collapse;margin-top:.8rem}
+.pack-table th{text-align:left;color:#5d6f5e;font-size:.8rem}
+.pack-table td,.pack-table th{padding:.45rem .25rem;border-bottom:1px solid #e4e9e1}
+.pack-table td input,.pack-table td select{min-width:85px}
+.pack-table td:first-child{min-width:105px}
+.pack-table td:last-child{width:75px}
+.pill{display:inline-block;padding:.28rem .55rem;border-radius:2rem;background:#e6ede2;font-size:.75rem;font-weight:700;white-space:nowrap}
+.pill.off{background:#f4e7e2;color:#8e3e2b}
+.filters{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem}
+.filters label{margin:0}.filters select{width:200px}
+.orders-list{display:grid;gap:.7rem}
+.order-card{background:#fff;border:1px solid #dce2d7;border-radius:.8rem;overflow:hidden}
+.order-card summary{display:grid;grid-template-columns:minmax(130px,1.3fr) .8fr .8fr .8fr .7fr;align-items:center;gap:.6rem;padding:1rem;cursor:pointer}
+.order-card summary::marker{color:#71815b}
+.order-card summary small{display:block;color:#617061;margin-top:.2rem}
+.order-detail{border-top:1px solid #e5e9e3;padding:1rem;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.order-detail p{margin:.25rem 0}
+.order-detail ul{padding-left:1.2rem}
+.order-detail li{margin:.25rem 0}
+#load-more-orders{display:block;margin:1.3rem auto}
+[hidden]{display:none!important}
+@media(max-width:820px){.product-layout{grid-template-columns:1fr}.product-browser{position:static}.product-list{max-height:250px}.order-card summary{grid-template-columns:1.4fr 1fr;gap:.3rem}.order-detail{grid-template-columns:1fr}}
+@media(max-width:560px){.admin-header{align-items:flex-start}.header-actions{flex-direction:column;align-items:flex-end;gap:.3rem}.dashboard-heading,.section-heading{align-items:flex-start;flex-direction:column}.editor-grid{grid-template-columns:1fr}.image-row{grid-template-columns:60px 1fr}.image-row img{width:60px;height:60px}.image-row .url-field{grid-column:1/-1}.pack-table{display:block;overflow-x:auto}.pack-table td input,.pack-table td select{min-width:100px}}
