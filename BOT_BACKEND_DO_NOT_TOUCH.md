@@ -1,6 +1,6 @@
 # WhatsApp bot backend — do not change these for website work
 
-Last reviewed: 29 September 2026.
+Last reviewed: 30 September 2026.
 
 The Supabase project `faoomjgkofqrdajaftjd` (name `Whatsapp`, region `ap-south-1`) runs the Madikar Taila WhatsApp ordering bot. The Sites website also uses this Supabase project through its separate `madikar-store` function. Website work must add or change its own functions, tables, and policies. It must not edit, redeploy, rename, or "clean up" the bot pieces below.
 
@@ -41,6 +41,8 @@ Row level security is on, and `anon` and `authenticated` have no privileges on t
 `public.Profile.id` references `auth.users`. The bot creates a hidden Auth user per WhatsApp customer. Do not delete those users or detach that foreign key as part of website setup.
 
 `public.Product` is a catalogue cache. It does not store the price charged at checkout. Checkout uses the price on the WhatsApp order.
+
+The live bot selects `retailer_id,name,description,product_link,catalog_id` from Product, and the sync writes those fields plus `updated_at`. Do not drop `product_link` or the other selected columns during website cleanup. Website-only content fields added on 30 Sep coexist with this contract. The `website_description`/`short_description` compatibility trigger preserves today's admin behavior. See `PRODUCT_CATALOG_SCHEMA.md` for the field map and variants.
 
 ## Secrets and URLs
 

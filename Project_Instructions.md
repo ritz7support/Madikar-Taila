@@ -1,6 +1,6 @@
 # Madikar Taila — Project Instructions
 
-Last updated: 29 September 2026.
+Last updated: 30 September 2026.
 
 These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. Completed bot work is on `main`; use `codex/website` for new website work. The older `cursor/production-hardening` branch is retained as bot work history.
 
@@ -63,9 +63,13 @@ The automatic webhook chain (`meta-catalog-webhook`) has been retired and the fu
 - `verify_jwt=true` — only we call it, never Meta.
 
 ## Current Product schema
-Product contains: `id, created_at, name, retailer_id, description, product_link, catalog_id, updated_at`.
+The Meta/bot fields are `id, created_at, name, retailer_id, description, product_link, catalog_id, updated_at`. The bot selects `retailer_id,name,description,product_link,catalog_id`, so keeping only `retailer_id` would break its lookup. Do not drop `product_link` while the current bot and sync still select/write it.
 
-Product does not contain transaction price. Checkout uses the incoming WhatsApp order-item price.
+The website also uses `store_id, category, short_description, images, store_sort_order, store_active, store_name, store_product_link`. On 30 Sep, an additive migration added `slug, website_description, traditional_benefits, extraction_craft, ingredients_and_more`. A compatibility trigger synchronizes `website_description` and `short_description` until the website API/admin are updated. Existing slugs are unique lowercase URL segments; new Meta rows may leave slug null until website setup.
+
+Website pack sizes and prices live in `ProductVariant`, linked to `Product.id`. The bot still uses the incoming WhatsApp order-item price. The current Meta sync does not populate website variants or prices.
+
+The owner chose to retain the 73 hidden manual products. All seven Meta products and four listed manual oils also remain. Future detail pages will use `/products/<slug>`; page routing is not implemented yet. See `PRODUCT_CATALOG_SCHEMA.md` for the live schema review, field purposes, and future Meta linking requirements.
 
 ## Current main menu
 Only:
@@ -95,6 +99,7 @@ None remain — `whatsapp-flow-key-register-test` and `test-order-status` (menti
 Use these project sources together:
 - `BOT_BACKEND_DO_NOT_TOUCH.md` — files, functions, and schema the WhatsApp bot depends on. Read this before any website or shared-backend work.
 - `WEBSITE_HANDOFF.md` — current website work boundary, starting point, and verified bot state.
+- `PRODUCT_CATALOG_SCHEMA.md` — current product fields, variants, visibility, slug decisions, and website content compatibility.
 - `WhatsApp_Flow_Project_Handoff.md` — full current-state handoff, outstanding-work list, continuation prompt.
 - `WhatsApp_Outbound_Message_JSON_Reference.md` — every outbound WhatsApp message contract, reconstructed from the current deployed source.
 - `WhatsApp_Flow_Error_Prevention_Guide.md` — lessons learned, regression checklist, hard-coded values to confirm before launch.

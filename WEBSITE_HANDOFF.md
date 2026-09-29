@@ -1,4 +1,4 @@
-# Website handoff — 29 September 2026
+# Website handoff — 30 September 2026
 
 ## Where to start
 
@@ -13,6 +13,12 @@ Read `BOT_BACKEND_DO_NOT_TOUCH.md` before any website or shared Supabase change.
 The separate `madikar-store` Edge Function is active in that Supabase project at v3 (checked 29 Sep). Its deployed v3 source was downloaded into `supabase/functions/madikar-store/index.ts` and compared with the live source; text matched after line-ending normalization. It was **not redeployed**. `supabase/config.toml` now records its existing `verify_jwt = false` setting without changing bot settings. The old `website/server/supabase-store-function.js` was copied from the Sites repository as a historical reference and differs from live v3; never deploy it. The `/admin` page accepts a 43-character team access code; `madikar-store` validates its SHA-256 hash. The code was rotated on 28 Sep by changing only that hash in the deployed function. The plaintext code is deliberately absent from this repository and the Sites environment variables. If the code is lost, rotate it again; a hash cannot reveal it. The new code's hash was confirmed in the deployed source; an end-to-end login through the admin page was not independently tested.
 
 **Website backend gap found during inspection:** the live public schema contains the website catalog columns and `ProductVariant`, but it does not currently contain the `store_create_order` or `store_record_payment` RPCs referenced by `madikar-store` v3. The website checkout path that uses those RPCs has not been enabled or tested end to end. Inspect the current live schema and order integration before enabling website order creation. No schema or bot runtime change was made during this source migration.
+
+## Product schema update — 30 September 2026
+
+The owner approved future product URLs under `/products/<slug>` and chose to keep all 73 hidden manual products. The live schema now has `slug`, `website_description`, `traditional_benefits`, `extraction_craft`, and `ingredients_and_more`, from migration `20260929191323_add_product_website_content.sql`. All 84 products have unique lowercase slugs. Existing short descriptions were copied to `website_description`; the three detail fields are empty. A compatibility trigger keeps the old `short_description` field synchronized with `website_description`, so the current admin remains usable. No product, variant, bot field, price, visibility setting, or existing grant changed.
+
+The bot's Product lookup explicitly selects `product_link`, `description`, `name`, and `catalog_id` as well as `retailer_id`; keep those columns. The website currently uses the `store_*` fields for identity, display, ordering, visibility and old product links. Its sizes/prices are already database-driven through `ProductVariant`. See `PRODUCT_CATALOG_SCHEMA.md` before the later UI/API work. That work should return the new fields, build real product detail pages, and preserve old query-string links. No website or Edge Function was published as part of this database update.
 
 ## Bot state to preserve
 
