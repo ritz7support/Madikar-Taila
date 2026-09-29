@@ -1,6 +1,6 @@
 # WhatsApp Flow App — Project Handoff
 
-Last reviewed: 29 September 2026. For the next website chat, start with `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Sections 14–15 preserve earlier bot work and a historical continuation prompt; `WEBSITE_HANDOFF.md` records the current website boundary and latest live test. Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
+Last reviewed: 29 September 2026. This bot handoff is part of the single Madikar Taila monorepo. For website work, start with `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Sections 14–15 preserve earlier bot work and a historical continuation prompt; `WEBSITE_HANDOFF.md` records the current website migration plan and latest live test. Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
 
 ## 1. Source-of-truth rules
 
@@ -9,14 +9,14 @@ Last reviewed: 29 September 2026. For the next website chat, start with `WEBSITE
 - Before Supabase schema/RLS/migration changes, inspect the live schema and current advisories.
 - Make one focused change at a time; deploy the complete function via the Supabase CLI (`--use-api`, no Docker available on this machine); verify the active version; test the real runtime path; commit and push so the repo stays in sync.
 - Do not modify the working Address Flow JSON (`Latest Address Flow JSON_7.3.md`) unless a specific Flow-layer problem is demonstrated.
-- The same Supabase project may also back a website. Before any non-bot work, read `BOT_BACKEND_DO_NOT_TOUCH.md`. Do not change the bot's Edge Functions, shared module, applied migrations, or `config.toml` entries as a side effect of website work.
+- The existing Sites storefront uses the same Supabase project through its separate `madikar-store` function. The owner chose this repo as the future monorepo for both bot and website source; the current Sites source has not yet been migrated into `website/`. Before website work, read `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Do not change the bot's Edge Functions, shared module, applied migrations, or `config.toml` entries as a side effect of website work.
 - `Project_Instructions.md` is the working guide for any coding tool. The filename used to say "Cursor"; the contents are not tool-specific. The git branch `cursor/production-hardening` is an ordinary branch; the name is historical.
 
 ## 2. Business context
 
 - **Phase 1**: this is a WhatsApp ordering bot for "Madikar Taila" oil products (Sesame, Coconut, Safflower, Sunflower, Groundnut, Mustard, Almond). Customers place orders and pay entirely inside WhatsApp.
-- The client currently views/fulfills orders via a **Google Sheet fed by n8n** (Append operation, triggered from `razorpay-webhook` after a payment is confirmed). This is a **temporary measure** until a staff-only front-end is built.
-- The planned front-end is for the client and their team to manage orders — **not** customer-facing. A separate customer-facing e-commerce storefront may be built later as its own phase.
+- The client has viewed/fulfilled WhatsApp orders via a **Google Sheet fed by n8n** (Append operation, triggered from `razorpay-webhook` after a payment is confirmed). The Sites storefront now has a team `/admin` page for catalog and order access; verify its current capabilities before assuming it replaces the Sheet workflow.
+- The customer-facing e-commerce storefront already exists as the "Madikar Taila | Heritage Store" ChatGPT Site at `https://madikartaila.com`. Its source migration into this monorepo is pending; see `WEBSITE_HANDOFF.md`.
 - Supabase project is currently on the **Free plan**. Free projects can be auto-paused after 7 days of low activity and have no downloadable backups — revisit before a real (non-test) launch.
 
 ## 3. Current Supabase project
@@ -144,9 +144,9 @@ Maintained separately in `Latest Address Flow JSON_7.3.md` — do not edit witho
 - Leaked-password protection disabled (irrelevant until staff log in via a front-end).
 - Every WhatsApp user currently gets a hidden Supabase Auth account with a fake email — fine for now, but should be removed before a staff front-end exists, so the user list isn't polluted with customer entries.
 
-## 13. Live database state (24 Sep night, all test data)
+## 13. Historical database snapshot and later live payment
 
-Orders: ~132. Order items: ~166. Addresses: 10. Payments: ~26. Profiles: ~9. Products: 7. All data to date is test data and should be wiped before a real launch.
+The earlier 24 Sep snapshot was about 132 orders, 166 order items, 10 addresses, 26 payments, 9 profiles, and 7 products. These counts are historical; query live data before relying on totals. Order 135 included a real ₹3 live-mode payment on 28 Sep, so the database no longer contains only test data. Preserve live records when considering any cleanup.
 
 ## 14. Outstanding work (in rough priority order)
 

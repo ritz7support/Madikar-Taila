@@ -1,8 +1,14 @@
-# WhatsApp Flow App — Project Instructions
+# Madikar Taila — Project Instructions
 
-Last updated: 28 September 2026.
+Last updated: 29 September 2026.
 
 These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. The git branch `cursor/production-hardening` is an ordinary branch; the name is historical and is not tied to Cursor.
+
+## Monorepo boundary
+
+The owner chose one local/GitHub monorepo for the bot and website: `D:\cursor projects\Madikar taila` / `samskruthrml21-eng/Madikar-Taila`. Put the existing ChatGPT Sites website source under `website/` after opening the current Site and verifying that it can still publish to the same Sites project. **The website source is not yet in this checkout**; Sites currently manages it separately. Do not create a second GitHub repo or a replacement Site as part of the migration. Keep website changes scoped to `website/` and website-specific Supabase objects. Read `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md` first.
+
+The existing bot function directories under `supabase/functions/` are protected. The separate live website function `madikar-store` v3 is not yet tracked here; retrieve its deployed source into its own directory before editing or redeploying it. Never run an all-functions deploy for website work.
 
 ## Runtime source of truth
 The GitHub repo (`cursor/production-hardening` branch, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth and are kept in sync — the branch's bot function source was confirmed identical to the deployed source after the latest bot change. Do not assume `main` contains the latest bot work. Treat a mismatch as a bug to investigate, not something to silently paper over.
@@ -24,7 +30,7 @@ The main menu includes `Note: You can always type "Hi" for the main menu`. After
 
 `meta-catalog-webhook` has been deleted (catalog sync is now manual-only).
 
-## Before making changes
+## Before making bot changes
 1. Inspect the current deployed Edge Function source (or the git copy — confirm they match with `supabase functions download --use-api` + `git diff` if in doubt).
 2. Inspect the relevant live Supabase schema/data when applicable.
 3. For WhatsApp Flow or WhatsApp Cloud API changes, consult the latest Meta documentation first.

@@ -4,6 +4,8 @@ Last reviewed: 29 September 2026.
 
 The Supabase project `faoomjgkofqrdajaftjd` (name `Whatsapp`, region `ap-south-1`) runs the Madikar Taila WhatsApp ordering bot. The Sites website also uses this Supabase project through its separate `madikar-store` function. Website work must add or change its own functions, tables, and policies. It must not edit, redeploy, rename, or "clean up" the bot pieces below.
 
+The owner chose one local/GitHub monorepo for bot and website work. Website source belongs in `website/` under this repo once the existing Sites source is migrated. That shared repository does not make the bot files below part of website work. The live `madikar-store` v3 source is not yet tracked here; retrieve it into its own function directory only after comparing it with the deployed source. See `WEBSITE_HANDOFF.md` for the migration state.
+
 The bot is live. A small edit can break registration, checkout, payment, or the order handoff. The repo copy of these functions is kept identical to what is deployed. Redeploying one of them from a partial or rewritten file has broken production before.
 
 ## Edge Functions — bot only
@@ -21,7 +23,7 @@ The bot is live. A small edit can break registration, checkout, payment, or the 
 
 Do not add catalogue-webhook handling back into `whatsapp-webhook`. That path was removed on purpose.
 
-`madikar-store` is not one of these bot functions. It is not in this repo. Leave the five functions above alone even if you work on `madikar-store`.
+`madikar-store` is not one of these bot functions. Its source is not yet in this repo. Leave the five functions above alone even when `madikar-store` is added here.
 
 ## Other files
 
@@ -50,6 +52,6 @@ The Meta App Dashboard URLs for `whatsapp-webhook` and `whatsapp-flow` include `
 
 ## What website work can do
 
-Add new Edge Functions, new tables, and new migrations. Do not deploy the bot functions while doing that. `npx supabase functions deploy` without a function name can publish every function in the repo; deploy only the new function by name.
+Add website source under `website/`, website Edge Functions under their own function directories, and new website migrations when needed. Do not deploy the bot functions while doing that. `npx supabase functions deploy` without a function name can publish every function in the repo; deploy only the intended website function by name.
 
 Read `Project_Instructions.md`, `WhatsApp_Flow_Project_Handoff.md`, and `WhatsApp_Flow_Error_Prevention_Guide.md` before changing anything that is shared with the bot.
