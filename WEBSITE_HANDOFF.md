@@ -1,12 +1,12 @@
-# Website handoff — 28 September 2026
+# Website handoff — 29 September 2026
 
 ## Where to start
 
-The owner has paused WhatsApp bot work and is moving to the website built with ChatGPT Sites. The website source is managed in Sites; this repository contains the bot backend, Supabase migrations, and bot documentation. Do not assume this repo contains the current Sites website source. Keep website source in a separate sibling project or checkout. If the website needs Supabase work, add its own named functions, new migrations/tables, and access paths, with a clear boundary from the bot.
+The owner has paused WhatsApp bot work and is moving to the website built with ChatGPT Sites. Sites project: `appgprj_6ab742ddf3e48191911b4bb531bb0ca8` ("Madikar Taila | Heritage Store"); live URL: `https://madikartaila.com`. Sites manages the website source in its own repository. This repository contains the bot backend, Supabase migrations, and bot documentation, not the current Sites website source. Keep the website and bot in separate source repositories. If the website needs Supabase work, add its own named functions, new migrations/tables, and access paths, with a clear boundary from the bot.
 
 Read `BOT_BACKEND_DO_NOT_TOUCH.md` before any website or shared Supabase change. The same Supabase project (`faoomjgkofqrdajaftjd`, region `ap-south-1`) hosts the bot, so do not edit or redeploy bot functions, shared bot code, existing applied migrations, bot configuration, or bot table privileges as a side effect of website work. Inspect live schema and permissions before adding website objects. Do not grant the website's `anon`/`authenticated` roles direct access to customer order, address, or payment tables merely to make website features work.
 
-The separate `madikar-store` Edge Function is active in that project at v2 as of this handoff. It is not part of this repo's bot function source. Inspect its deployed source and the Sites project before designing or changing the website integration; do not infer its behavior from its name or version.
+The separate `madikar-store` Edge Function is active in that Supabase project at v3 (checked 29 Sep). It is not part of this repo's bot function source. The `/admin` page accepts a 43-character team access code; `madikar-store` validates its SHA-256 hash. The code was rotated on 28 Sep by changing only that hash in the deployed function. The plaintext code is deliberately absent from this repository and the Sites environment variables. If the code is lost, rotate it again; a hash cannot reveal it. Before redeploying `madikar-store`, inspect its deployed v3 source so the rotation is preserved. The new code's hash was confirmed in the deployed source; an end-to-end login through the admin page was not independently tested.
 
 ## Bot state to preserve
 

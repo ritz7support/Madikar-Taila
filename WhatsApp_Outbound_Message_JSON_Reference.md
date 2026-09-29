@@ -278,7 +278,7 @@ Sent (with up to 3 retries) after the verified `payment_link.paid` webhook moves
 ## 12. Runtime notes
 
 - Versions checked 28 Sep 2026: `whatsapp-webhook` v92, `whatsapp-flow` v48, `razorpay-webhook` v30. Compare deployed source for content parity; platform version counters may advance without a code change.
-- WhatsApp API version `v25.0`; catalog ID `1515875913870520`; phone number ID `1327606333760280` (all overridable via env vars of the same name, except the popular-product-set ID and the oil-product IDs, which are hard-coded).
+- WhatsApp API version `v25.0`; catalog ID `1515875913870520`; phone number ID `1327606333760280` (overridable via their corresponding env vars). The popular-product-set ID is hard-coded. The former hard-coded oil-product IDs were removed with the unreachable "View oil" path in v83.
 - Razorpay Standard Payment Link URL is dynamic, from `payments.provider_payment_link_url`. Payment success is finalized only by the verified `payment_link.paid` webhook.
 - Template names, language, button types and approved components must match the configured WhatsApp Business Account templates exactly.
 - The Address Flow JSON is maintained separately in `Latest Address Flow JSON_7.3.md`.

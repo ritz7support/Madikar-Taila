@@ -1,8 +1,8 @@
 # WhatsApp bot backend — do not change these for website work
 
-Last updated: 28 September 2026.
+Last reviewed: 29 September 2026.
 
-The Supabase project `faoomjgkofqrdajaftjd` (name `Whatsapp`, region `ap-south-1`) runs the Madikar Taila WhatsApp ordering bot. A website may use the same project later. Website work must add its own functions, tables, and policies. It must not edit, redeploy, rename, or "clean up" the bot pieces below.
+The Supabase project `faoomjgkofqrdajaftjd` (name `Whatsapp`, region `ap-south-1`) runs the Madikar Taila WhatsApp ordering bot. The Sites website also uses this Supabase project through its separate `madikar-store` function. Website work must add or change its own functions, tables, and policies. It must not edit, redeploy, rename, or "clean up" the bot pieces below.
 
 The bot is live. A small edit can break registration, checkout, payment, or the order handoff. The repo copy of these functions is kept identical to what is deployed. Redeploying one of them from a partial or rewritten file has broken production before.
 

@@ -1,6 +1,6 @@
 # WhatsApp Flow App — Error & Prevention Guide
 
-Last updated: 24 September 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale).
+Last reviewed: 29 September 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale). Historical incidents retain their original dates; see §14 for the checked bot baseline.
 
 ## 1. Product-name lesson
 

@@ -1,6 +1,6 @@
 # WhatsApp Flow App — Project Handoff
 
-Last updated: 28 September 2026. For the next website chat, start with `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Sections 14–15 below preserve the earlier bot work plan; `WEBSITE_HANDOFF.md` records the current pause and latest live test. Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
+Last reviewed: 29 September 2026. For the next website chat, start with `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Sections 14–15 preserve earlier bot work and a historical continuation prompt; `WEBSITE_HANDOFF.md` records the current website boundary and latest live test. Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
 
 ## 1. Source-of-truth rules
 
