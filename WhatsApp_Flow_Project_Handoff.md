@@ -4,13 +4,13 @@ Last reviewed: 29 September 2026. This bot handoff is part of the single Madikar
 
 ## 1. Source-of-truth rules
 
-- The **GitHub repo** (`https://github.com/samskruthrml21-eng/Madikar-Taila.git`, current working branch `cursor/production-hardening`) and the **live Supabase project** are both source of truth for the bot. The working branch's bot function source was confirmed identical to deployed source after the latest bot change. Do not assume the default branch `main` contains the latest bot work.
+- The **GitHub repo** (`https://github.com/samskruthrml21-eng/Madikar-Taila.git`, bot baseline on `main`) and the **live Supabase project** are both source of truth for the bot. The bot function source was confirmed identical to deployed source after the latest bot change. New website work belongs on `codex/website`.
 - Before any WhatsApp Flow or WhatsApp Cloud API change, consult the latest Meta documentation and inspect the currently deployed function / the repo copy (they should match).
 - Before Supabase schema/RLS/migration changes, inspect the live schema and current advisories.
 - Make one focused change at a time; deploy the complete function via the Supabase CLI (`--use-api`, no Docker available on this machine); verify the active version; test the real runtime path; commit and push so the repo stays in sync.
 - Do not modify the working Address Flow JSON (`Latest Address Flow JSON_7.3.md`) unless a specific Flow-layer problem is demonstrated.
 - The existing Sites storefront uses the same Supabase project through its separate `madikar-store` function. The owner chose this repo as the future monorepo for both bot and website source; the current Sites source has not yet been migrated into `website/`. Before website work, read `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Do not change the bot's Edge Functions, shared module, applied migrations, or `config.toml` entries as a side effect of website work.
-- `Project_Instructions.md` is the working guide for any coding tool. The filename used to say "Cursor"; the contents are not tool-specific. The git branch `cursor/production-hardening` is an ordinary branch; the name is historical.
+- `Project_Instructions.md` is the working guide for any coding tool. The filename used to say "Cursor"; the contents are not tool-specific. The earlier `cursor/production-hardening` branch is retained as bot work history.
 
 ## 2. Business context
 

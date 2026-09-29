@@ -2,7 +2,7 @@
 
 Last updated: 29 September 2026.
 
-These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. The git branch `cursor/production-hardening` is an ordinary branch; the name is historical and is not tied to Cursor.
+These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. Completed bot work is on `main`; use `codex/website` for new website work. The older `cursor/production-hardening` branch is retained as bot work history.
 
 ## Monorepo boundary
 
@@ -11,7 +11,7 @@ The owner chose one local/GitHub monorepo for the bot and website: `D:\cursor pr
 The existing bot function directories under `supabase/functions/` are protected. The separate live website function `madikar-store` v3 is not yet tracked here; retrieve its deployed source into its own directory before editing or redeploying it. Never run an all-functions deploy for website work.
 
 ## Runtime source of truth
-The GitHub repo (`cursor/production-hardening` branch, `https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth and are kept in sync — the branch's bot function source was confirmed identical to the deployed source after the latest bot change. Do not assume `main` contains the latest bot work. Treat a mismatch as a bug to investigate, not something to silently paper over.
+The GitHub repo (`https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth for the bot. The completed bot work is on `main`, and its function source was confirmed identical to the deployed source after the latest bot change. Treat a mismatch as a bug to investigate, not something to silently paper over.
 
 Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
 - whatsapp-webhook v92

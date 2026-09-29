@@ -106,7 +106,7 @@ Edge Functions run in whichever region is closest to the *caller* by default. Me
 - Payment link + `order_details` expiry tightened from 24h to ~16 minutes, with `payment_link.expired`/`cancelled` handling in `razorpay-webhook` (migration `20260924181608_add_expired_at_to_payments.sql`) — see §17. Paid path live-tested; real expired/cancelled path remains untested.
 - Address Flow JSON v7.3 (unchanged, protected).
 - Both functions Meta calls directly pinned to `ap-south-1`.
-- `cursor/production-hardening` branch of the GitHub repo is the current bot branch; the latest bot function source was confirmed identical to deployed source. Do not assume `main` has these changes.
+- Completed bot work is on `main` in the GitHub repo; the latest bot function source was confirmed identical to deployed source. New website work belongs on `codex/website`.
 
 ## 15. Regression checklist
 
