@@ -3,3 +3,9 @@
 supabase/.temp/
 supabase/.branches/
 node_modules/
+
+# Local evidence can contain customer data and credentials; preserve on disk only.
+/outputs/
+/sites-v*/
+/site-*.tar
+/site-*.tar.gz

@@ -7,20 +7,21 @@
   <meta name="description" content="Explore Madikar Taila's wood-pressed oils, millets, chutneys and natural pantry essentials from Dharwad.">
   <title>Madikar Taila — Pure by Nature</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23123321'/%3E%3Cpath d='M32 6C21 20 12 30 12 41a20 20 0 0 0 40 0C52 30 43 20 32 6Z' fill='%23f5f1e7'/%3E%3Cpath d='M32 24c-6 8-10 13-10 19a10 10 0 0 0 20 0c0-6-4-11-10-19Z' fill='%23d5a53f'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="checkout.css">
-  <script src="app.js" defer></script>
-  <script src="checkout.js" defer></script>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/policies.css">
+  <link rel="stylesheet" href="/checkout.css">
+  <script src="/app.js" defer></script>
+  <script src="/checkout.js" defer></script>
 </head>
 <body>
   <div class="announcement">FROM OUR DHARWAD FARM TO YOUR HOME <span aria-hidden="true">✦</span> NATURAL, EVERYDAY GOODNESS</div>
   <header class="site-header">
     <div class="header-inner page-width">
-      <a class="brand" href="#top" aria-label="Madikar Taila, home">
+      <a class="brand" href="/#top" aria-label="Madikar Taila, home">
         <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4C20 20 10 31 10 43a22 22 0 0 0 44 0C54 31 44 20 32 4Z" fill="#123321"/><path d="M32 23C25 32 21 38 21 44a11 11 0 0 0 22 0c0-6-4-12-11-21Z" fill="#d8a333"/><path d="M32 28c-3 6-5 10-5 14a5 5 0 0 0 10 0c0-4-2-8-5-14Z" fill="#f8e4ad"/></svg>
         <span><strong>Madikar Taila</strong><small>PURE BY NATURE</small></span>
       </a>
-      <nav class="main-nav" aria-label="Main navigation"><a href="#shop">Shop all</a><a href="#story">Our story</a><a href="#contact">Contact</a></nav>
+      <nav class="main-nav" aria-label="Main navigation"><a href="/#shop">Shop all</a><a href="/#contact">Contact</a></nav>
       <div class="header-actions"><button id="search-open" class="icon-button" type="button" aria-label="Search products"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg></button><button id="cart-open" class="cart-button" type="button" aria-label="Open shopping bag"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1 13H5L4 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></svg><span>Bag</span><b id="cart-count">0</b></button></div>
     </div>
   </header>
@@ -28,40 +29,36 @@
     <section class="hero" aria-labelledby="hero-title"><div class="hero-photo" role="img" aria-label="Square Madikar Taila groundnut oil bottle with groundnuts"></div><div class="hero-shade"></div><div class="page-width hero-content"><div class="eyebrow light">ROOTED IN DHARWAD, KARNATAKA</div><h1 id="hero-title">Goodness, <em>in every drop.</em></h1><p>Wood-pressed oils, heritage grains and everyday essentials, selected for the way you cook and care.</p><a class="gold-button" href="#shop">Explore the collection <span aria-hidden="true">↗</span></a><div class="hero-signature">MADIKAR TAILA <span>—</span> FROM PURPOSE TO PURITY</div></div></section>
     <div class="values-band"><div class="page-width values-inner"><span><b>01</b> WOOD-PRESSED OILS</span><span><b>02</b> HERITAGE PANTRY</span><span><b>03</b> MADE WITH CARE IN DHARWAD</span></div></div>
     <section id="shop" class="shop-section page-width" aria-labelledby="shop-title">
-      <div class="section-heading"><div><div class="eyebrow">THE MADIKAR COLLECTION</div><h2 id="shop-title">Find your everyday favourites.</h2><p>Explore the complete range from the supplied Madikar Taila price sheets.</p></div><div class="item-count"><strong id="result-count">…</strong><span>products</span></div></div>
+      <div class="section-heading"><div><div class="eyebrow">THE MADIKAR COLLECTION</div><h2 id="shop-title">Find your everyday favourites.</h2><p>Explore the complete Madikar Taila range.</p></div><div class="item-count"><strong id="result-count">…</strong><span>products</span></div></div>
       <div class="shop-toolbar"><div class="search-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg><input id="search-input" type="search" placeholder="Search oils, millets, chutneys…" aria-label="Search products"></div><label class="sort-wrap">Sort by <select id="sort-select" aria-label="Sort products"><option value="featured">Featured</option><option value="name">Name A–Z</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label></div>
       <div id="category-list" class="category-list" aria-label="Filter by category"></div>
       <div id="product-grid" class="product-grid" aria-live="polite"></div>
       <div id="no-results" class="no-results" hidden><h3>No products found</h3><p>Try a different search or category.</p><button type="button" id="clear-filters" class="outline-button">Show all products</button></div>
-      <p class="price-note">Prices are from the supplied price lists and may vary with raw material costs. Packaging images are illustrative; please confirm availability and final price with Madikar Taila when ordering.</p>
     </section>
-    <section id="story" class="story-section"><div class="page-width story-inner"><div class="story-ornament"><span>MT</span><div>FROM PURPOSE<br>TO PURITY</div></div><div class="story-copy"><div class="eyebrow light">OUR ROOTS</div><h2>Tradition belongs<br>at the table.</h2><p>Madikar Taila began with a simple belief: everyday food deserves thoughtful making. From oils to familiar North Karnataka pantry staples, the range is rooted in the farm and mill at Navalgund Road, Dharwad.</p></div></div></section>
+    <section id="product-page" class="product-page page-width" hidden aria-live="polite"></section>
   </main>
-  <footer id="contact" class="footer"><div class="page-width footer-grid"><div><div class="footer-brand">Madikar Taila</div><p>Pure by nature. Trusted by generations.</p><p>Madikar Farm, After Durga Colony,<br>Navalgund Road, Dharwad, Karnataka.</p></div><div><h3>Explore</h3><a href="#shop">Shop the collection</a><a href="#story">Our story</a></div><div><h3>Get in touch</h3><a href="tel:+919972267897">+91 99722 67897</a><a href="tel:+917483862050">Price list contact: 74838 62050</a><a href="https://wa.me/919972267897" target="_blank" rel="noopener">WhatsApp Madikar Taila</a></div></div><div class="footer-bottom page-width"><span>© 2026 Madikar Taila storefront concept</span><span>Illustrative product imagery and provisional descriptions are identified in the catalog.</span></div></footer>
+  <footer id="contact" class="footer"><div class="page-width footer-grid"><div><div class="footer-brand">Madikar Taila</div><p>Pure by nature. Trusted by generations.</p><p>Madikar Farm, After Durga Colony,<br>Navalgund Road, Dharwad, Karnataka.</p></div><div><h3>Explore</h3><a href="/#shop">Shop the collection</a></div><div><h3>Get in touch</h3><a href="tel:+919972267897">+91 99722 67897</a></div></div><div class="footer-policies page-width"><h3>Policies &amp; help</h3><nav aria-label="Policies and help"><a href="/privacy-policy">Privacy Policy</a><a href="/terms-and-conditions">Terms &amp; Conditions</a><a href="/shipping-policy">Shipping &amp; Delivery Policy</a><a href="/cancellation-refund-policy">Cancellation &amp; Refund</a><a href="/faq">Frequently Asked Questions</a></nav></div><div class="footer-bottom page-width"><span>© 2026 Madikar Taila</span></div></footer>
   <div id="drawer-overlay" class="overlay" hidden></div><aside id="cart-drawer" class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title" aria-hidden="true"><div class="drawer-header"><div><div class="eyebrow">YOUR SELECTION</div><h2 id="cart-title">Shopping bag</h2></div><button id="cart-close" class="close-button" type="button" aria-label="Close shopping bag">×</button></div><div id="cart-items" class="cart-items"></div><div class="cart-bottom"><div class="subtotal"><span>Estimated subtotal</span><strong id="cart-total">₹0</strong></div><p>Enter your shipping address in the next step. Online payment will open when the store is configured.</p><button id="checkout-open" class="checkout-button" type="button">Continue to checkout <span aria-hidden="true">↗</span></button></div></aside>
-  <div id="product-overlay" class="overlay" hidden></div><div id="product-modal" class="product-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-hidden="true"><button id="modal-close" class="close-button modal-close" type="button" aria-label="Close product details">×</button><div id="modal-content"></div></div>
   <div id="checkout-overlay" class="overlay" hidden></div>
   <section id="checkout-modal" class="checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title" aria-hidden="true">
     <div class="checkout-heading"><div><div class="eyebrow">LAST STEP</div><h2 id="checkout-title">Delivery details</h2><p>Tell us where to send your Madikar Taila order.</p></div><button id="checkout-close" class="close-button" type="button" aria-label="Close checkout">×</button></div>
     <form id="shipping-form" novalidate>
       <div class="checkout-fields">
-        <label>Full name <input name="name" autocomplete="name" maxlength="80" required></label>
-        <label>Mobile number <input name="phone" type="tel" autocomplete="tel-national" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit number" required></label>
+        <label>Full name <input name="name" minlength="2" autocomplete="name" maxlength="80" required></label>
+        <label>Mobile number <input name="phone" type="tel" autocomplete="tel-national" inputmode="numeric" pattern="[6-9][0-9]{9}" maxlength="10" placeholder="10-digit number" required></label>
         <label class="wide">Email <span class="optional">optional</span><input name="email" type="email" autocomplete="email" maxlength="120"></label>
         <label class="wide">House / flat, street address <input name="line1" autocomplete="address-line1" maxlength="120" required></label>
         <label class="wide">Area / landmark <span class="optional">optional</span><input name="line2" autocomplete="address-line2" maxlength="120"></label>
         <label>City <input name="city" autocomplete="address-level2" maxlength="60" required></label>
         <label>State <input name="state" autocomplete="address-level1" maxlength="60" required></label>
         <label>PIN code <input name="postalCode" autocomplete="postal-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></label>
-        <label>Country <input value="India" readonly aria-label="Shipping country"></label>
+        <label>Country <input name="country" value="India" required readonly aria-label="Shipping country"></label>
       </div>
       <div class="checkout-summary"><div><span>Items</span><strong id="checkout-items-total">₹0</strong></div><div><span>Shipping</span><strong id="checkout-shipping">Confirmed by seller</strong></div><div class="checkout-grand"><span>Total</span><strong id="checkout-grand-total">Pending</strong></div></div>
-      <p id="checkout-status" class="checkout-status" role="status">Checking online payment availability…</p>
+      <p id="checkout-status" class="checkout-status" role="status" hidden></p>
       <button id="razorpay-pay" class="checkout-pay" type="submit" disabled>Pay securely with Razorpay</button>
-      <button id="whatsapp-order" class="checkout-inquiry" type="button">Send order and address on WhatsApp <span aria-hidden="true">↗</span></button>
-      <p class="checkout-fineprint">Your address is shared only when you choose a checkout option. We will confirm availability and dispatch details before shipping.</p>
     </form>
-    <div id="checkout-success" class="checkout-success" hidden><div class="success-mark">✓</div><h3>Payment received</h3><p>Your order and delivery address have been submitted. Please save the payment reference below.</p><strong id="payment-reference"></strong><button id="checkout-done" class="outline-button" type="button">Continue shopping</button></div>
+    <div id="checkout-success" class="checkout-success" hidden><div class="success-mark">✓</div><h3 id="checkout-success-title">Payment received</h3><p>Your order and delivery address have been submitted. Please save the payment reference below.</p><strong id="payment-reference"></strong><button id="checkout-done" class="outline-button" type="button">Continue shopping</button></div>
   </section>
 </body>
 </html>

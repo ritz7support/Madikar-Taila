@@ -1,12 +1,14 @@
 # WhatsApp bot backend — do not change these for website work
 
-Last reviewed: 30 September 2026.
+Last reviewed: 1 October 2026.
 
 The Supabase project `faoomjgkofqrdajaftjd` (name `Whatsapp`, region `ap-south-1`) runs the Madikar Taila WhatsApp ordering bot. The Sites website also uses this Supabase project through its separate `madikar-store` function. Website work must add or change its own functions, tables, and policies. It must not edit, redeploy, rename, or "clean up" the bot pieces below.
 
-The owner chose one local/GitHub monorepo for bot and website work. The existing Sites source has been migrated into `website/` and published back to the same Site. That shared repository does not make the bot files below part of website work. The live `madikar-store` v3 source has been retrieved and verified in its own `supabase/functions/madikar-store/` directory; it was not redeployed. See `WEBSITE_HANDOFF.md` for the migration state.
+The owner chose one local/GitHub monorepo for bot and website work. The existing Sites source has been migrated into `website/` and published back to the same Site; the latest website publication is version 24. That shared repository does not make the bot files below part of website work. The live madikar-store v10 source matches its own supabase/functions/madikar-store/ directory (1 October). See PROJECT_HANDOFF.md and WEBSITE_HANDOFF.md for the consolidated checkpoint.
 
 The bot is live. A small edit can break registration, checkout, payment, or the order handoff. The repo copy of these functions is kept identical to what is deployed. Redeploying one of them from a partial or rewritten file has broken production before.
+
+**Explicit owner-requested source synchronization, 30 Sep:** the owner manually edited live `razorpay-webhook` (reported v32) to append `Need help with your order? Contact us at 99722 67897.` to the payment-confirmation message. That full deployed source has been copied into the local repository; the shared module is unchanged. This was a download/parity update, not a deployment or authorization for further bot edits. Preserve it. The change is included in the main consolidation; live source parity was rechecked on 1 October. See PROJECT_HANDOFF.md.
 
 ## Edge Functions — bot only
 
@@ -23,7 +25,7 @@ The bot is live. A small edit can break registration, checkout, payment, or the 
 
 Do not add catalogue-webhook handling back into `whatsapp-webhook`. That path was removed on purpose.
 
-`madikar-store` is not one of these bot functions. Its live v3 source is in this repo under its own function directory. Leave the five functions above alone when working on it.
+`madikar-store` is not one of these bot functions. Its last-verified v4 source is in this repo under its own function directory. Re-inspect live source before editing it, and leave the five functions above alone.
 
 ## Other files
 
@@ -44,6 +46,8 @@ Row level security is on, and `anon` and `authenticated` have no privileges on t
 
 The live bot selects `retailer_id,name,description,product_link,catalog_id` from Product, and the sync writes those fields plus `updated_at`. Do not drop `product_link` or the other selected columns during website cleanup. Website-only content fields added on 30 Sep coexist with this contract. The `website_description`/`short_description` compatibility trigger preserves today's admin behavior. See `PRODUCT_CATALOG_SCHEMA.md` for the field map and variants.
 
+After the owner-approved catalog reconciliation, Product has 59 canonical website groups and 17 additional hidden rows for variant-specific Meta retailer IDs. The latter have null `store_id`/slug and no standalone website variants. Keep them hidden when enabling other categories. Preserve the exact retailer-to-parent/variant mapping in `outputs/catalog-reconciliation-20260930/retailer-variant-mapping.json`. Future manual sync deletes missing Meta items and protects only active website parents, so inspect the accepted Meta catalog before invoking it.
+
 ## Secrets and URLs
 
 Do not rotate, rename, or clear these as part of website work: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_FLOW_PRIVATE_KEY`, `FLOW_TOKEN_SECRET`, `FLOW_SIGNATURE_MODE`, `RAZORPAY_MODE`, the Razorpay test and live key and webhook secrets, `N8N_WEBHOOK_URL`.
@@ -57,3 +61,8 @@ The Meta App Dashboard URLs for `whatsapp-webhook` and `whatsapp-flow` include `
 Add website source under `website/`, website Edge Functions under their own function directories, and new website migrations when needed. Do not deploy the bot functions while doing that. `npx supabase functions deploy` without a function name can publish every function in the repo; deploy only the intended website function by name.
 
 Read `Project_Instructions.md`, `WhatsApp_Flow_Project_Handoff.md`, and `WhatsApp_Flow_Error_Prevention_Guide.md` before changing anything that is shared with the bot.
+
+
+## Standing checkout constraint — 30 September 2026
+
+The owner explicitly requires that website work must never affect the working WhatsApp bot. Preserve bot handlers, shared code, secrets, configuration, RPCs, privileges and existing scheduled jobs. Website checkout has its own authenticated recovery and fulfilment path. Existing profiles and saved/default addresses must not be overwritten by guest checkout. Additive shared-schema changes require compatibility checks and regression verification before application. See `website/PAYMENTS.md` for the isolated website implementation and outstanding activation checks.

@@ -32,6 +32,8 @@
 .checkout-heading {display:flex;justify-content:space-between;gap:20px;padding:29px 34px 22px;border-bottom:1px solid var(--line)}
 .checkout-heading h2 {font:400 39px/1.1 Georgia,serif;letter-spacing:-.035em;margin:8px 0}
 .checkout-heading p {color:var(--muted);font-size:13px;margin:0}
+.payment-confirmed .checkout-heading {position:absolute;top:18px;right:20px;padding:0;border:0}
+.payment-confirmed .checkout-heading>div {display:none}
 #shipping-form {padding:25px 34px 30px}
 .checkout-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px 18px}
 .checkout-fields label {display:block;color:var(--forest);font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
@@ -47,14 +49,10 @@
 .checkout-grand strong {font:700 22px Georgia,serif}
 .checkout-status {min-height:22px;color:#5e6d5e;font-size:12px;line-height:1.5;margin:0 0 15px}
 .checkout-status[data-tone="error"] {color:#9b4239}
-.checkout-pay,.checkout-inquiry {width:100%;min-height:49px;border:0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.checkout-pay {width:100%;min-height:49px;border:0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .checkout-pay {background:var(--forest);color:#fff}
 .checkout-pay:hover:not(:disabled) {background:#25563a}
 .checkout-pay:disabled {opacity:.43;cursor:not-allowed}
-.checkout-inquiry {margin-top:10px;background:#e7d39b;color:var(--forest)}
-.checkout-inquiry:hover {background:#efdcaa}
-.checkout-inquiry span {padding-left:8px}
-.checkout-fineprint {color:#7b8479;font-size:11px;line-height:1.5;margin:15px 0 0}
 .checkout-success {text-align:center;padding:55px 35px 45px;display:flex;align-items:center;flex-direction:column;gap:10px}
 .checkout-success[hidden] {display:none}
 .success-mark {display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#d8ead8;color:#205235;font-size:29px}

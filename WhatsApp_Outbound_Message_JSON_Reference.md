@@ -1,6 +1,6 @@
 # WhatsApp Outbound Message JSON Reference
 
-Last updated: 28 September 2026. Current bot baseline: `whatsapp-webhook` v92 and `razorpay-webhook` v30. Supersedes `WhatsApp_Outbound_Message_JSON_Reference_23Sep2026_v6.docx` (deleted — it was stale). The "View oil" dead code (`viewOil()`/`OIL_PRODUCT_IDS`, §7 below) was deleted in v83 — kept in this doc's history for context, removed from the current inventory (§11).
+Last updated: 30 September 2026. Last inspected: `whatsapp-webhook` v93 and `razorpay-webhook` v32. The owner's manual Razorpay payment-confirmation text change has been copied from live source into the local repository and reflected in §10; no deployment was performed. Supersedes `WhatsApp_Outbound_Message_JSON_Reference_23Sep2026_v6.docx` (deleted — it was stale). The "View oil" dead code (`viewOil()`/`OIL_PRODUCT_IDS`, §7 below) was deleted in v83 — kept in this doc's history for context, removed from the current inventory (§11).
 
 The deployed function source is the runtime source of truth. Placeholder values below (`<...>`) are illustrative.
 
@@ -249,7 +249,7 @@ Sent (with up to 3 retries) after the verified `payment_link.paid` webhook moves
   "type": "interactive",
   "interactive": {
     "type": "order_status",
-    "body": { "text": "*Payment received ✓*\n\nThank you for your order! We've received your payment and are now processing your order. We'll keep you updated on its progress." },
+    "body": { "text": "*Payment received ✓*\n\nThank you for your order! We've received your payment and are now processing your order. We'll keep you updated on its progress.\n\nNeed help with your order? Contact us at 99722 67897." },
     "action": {
       "name": "review_order",
       "parameters": {
@@ -277,7 +277,7 @@ Sent (with up to 3 retries) after the verified `payment_link.paid` webhook moves
 
 ## 12. Runtime notes
 
-- Versions checked 28 Sep 2026: `whatsapp-webhook` v92, `whatsapp-flow` v48, `razorpay-webhook` v30. Compare deployed source for content parity; platform version counters may advance without a code change.
+- Last inspected versions: `whatsapp-webhook` v93 and `razorpay-webhook` v32 (30 Sep), `whatsapp-flow` v48 (28 Sep). Compare deployed source for content parity; platform version counters may advance without a code change.
 - WhatsApp API version `v25.0`; catalog ID `1515875913870520`; phone number ID `1327606333760280` (overridable via their corresponding env vars). The popular-product-set ID is hard-coded. The former hard-coded oil-product IDs were removed with the unreachable "View oil" path in v83.
 - Razorpay Standard Payment Link URL is dynamic, from `payments.provider_payment_link_url`. Payment success is finalized only by the verified `payment_link.paid` webhook.
 - Template names, language, button types and approved components must match the configured WhatsApp Business Account templates exactly.

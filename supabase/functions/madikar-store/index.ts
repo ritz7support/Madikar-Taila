@@ -1,3 +1,4 @@
+import { createCheckoutService } from './checkout.ts';
 // Deployed as the madikar-store Supabase Edge Function.
 // The existing Sites Worker and Vercel each hold a separate private signing key.
 const PUBLIC_KEYS = [
@@ -49,7 +50,9 @@ async function database(path, options = {}) {
   if (!response.ok) {
     console.error('Store database operation failed', response.status, payload?.code || '');
     if (payload?.message === 'Product prices changed') return {error:'Product prices changed', status:409};
-    throw new Error('Store database operation failed');
+    const error = new Error('Store database operation failed');
+    error.status = response.status;
+    throw error;
   }
   return {payload, status:200};
 }
@@ -109,7 +112,7 @@ async function adminAction(body) {
   if (body.action === 'admin_catalog') {
     const [products,variants] = await Promise.all([
       database('/rest/v1/Product?select=id,store_id,store_name,name,category,short_description,images,store_sort_order,store_active,catalog_id&store_id=not.is.null&order=store_sort_order.asc'),
-      database('/rest/v1/ProductVariant?select=id,product_id,position,size,price,inventory_quantity,availability_status&order=position.asc')
+      database('/rest/v1/ProductVariant?select=id,product_id,position,size,price,inventory_quantity,availability_status&order=position.asc,id.asc')
     ]);
     const byId = new Map();
     for (const variant of variants.payload || []) {
@@ -220,8 +223,26 @@ async function adminAction(body) {
   throw new Error('Unknown admin operation');
 }
 
+const checkoutService = createCheckoutService({database,env:key=>Deno.env.get(key),background:promise=>EdgeRuntime.waitUntil(promise)});
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return result({error:'Method not allowed'},405);
+  const path = new URL(request.url).pathname;
+  if (path.endsWith('/checkout-recovery')) {
+    try {
+      if (!await checkoutService.authorizeRecovery(request.headers.get('x-checkout-recovery'))) return result({error:'Unauthorized'},401);
+      return result(await checkoutService.work());
+    }
+    catch { return result({error:'Recovery temporarily unavailable'},503); }
+  }
+  if (path.endsWith('/razorpay-webhook')) {
+    try {
+      if (Number(request.headers.get('content-length') || 0) > 100000) return result({error:'Request too large'},413);
+      const event = await request.text();
+      if (event.length > 100000) return result({error:'Request too large'},413);
+      return result(await checkoutService.webhook(event,request.headers.get('x-razorpay-signature')));
+    } catch(error) { return result({error:'Payment event could not be accepted'},error.status || 503); }
+  }
   if (Number(request.headers.get('content-length') || 0) > 2100000) return result({error:'Request too large'},413);
   let raw;
   try {
@@ -234,6 +255,10 @@ Deno.serve(async (request) => {
   try { body = JSON.parse(raw); } catch { return result({error:'Invalid JSON'},400); }
   if (body.action !== 'admin_upload_image' && raw.length > 20000) return result({error:'Request too large'},413);
   try {
+    if (body.action === 'checkout_config') return result(await checkoutService.config());
+    if (body.action === 'checkout_create') return result(await checkoutService.create(body));
+    if (body.action === 'checkout_verify') return result(await checkoutService.verify(body));
+    if (body.action === 'checkout_status') return result(await checkoutService.status(body));
     if (typeof body.action === 'string' && body.action.startsWith('admin_')) {
       const admin=await adminIdentity(body.adminToken);
       if (!admin) return result({error:'Owner access required'},403);
@@ -241,7 +266,7 @@ Deno.serve(async (request) => {
     }
     if (body.action === 'catalog') {
       const [productResponse,variantResponse] = await Promise.all([
-        database('/rest/v1/Product?select=id,store_id,category,name,store_name,short_description,images&store_active=eq.true&order=store_sort_order.asc'),
+        database('/rest/v1/Product?select=id,store_id,slug,category,name,store_name,website_description,traditional_benefits,extraction_craft,ingredients_and_more,images&store_active=eq.true&store_id=not.is.null&slug=not.is.null&order=store_sort_order.asc'),
         database('/rest/v1/ProductVariant?select=product_id,position,size,price,inventory_quantity,availability_status&order=position.asc')
       ]);
       const variantsByProduct = new Map();
@@ -254,41 +279,18 @@ Deno.serve(async (request) => {
         variantsByProduct.set(variant.product_id,list);
       }
       const products = (productResponse.payload || []).map(p => ({
-        id:p.store_id, category:p.category, name:p.store_name || p.name, note:p.short_description || '',
+        id:p.store_id, slug:p.slug, category:p.category, name:p.store_name || p.name,
+        note:p.website_description || '', traditional_benefits:p.traditional_benefits || '',
+        extraction_craft:p.extraction_craft || '', ingredients_and_more:p.ingredients_and_more || '',
         image:p.images?.[0]?.url || '',
         image_alt:p.images?.[0]?.kind === 'product_photo' ? p.images?.[0]?.alt || '' : '',
         image_kind:p.images?.[0]?.kind || 'illustration', variants:variantsByProduct.get(p.id) || []
       }));
       return result({products});
     }
-    if (body.action === 'create_order') {
-      const response = await database('/rest/v1/rpc/store_create_order', {
-        method:'POST',
-        body:JSON.stringify({
-          p_channel:body.channel,
-          p_customer:body.customer,
-          p_address:body.address,
-          p_lines:body.lines,
-          p_shipping_paise:body.shippingPaise,
-          p_expected_subtotal_paise:body.expectedSubtotalPaise,
-          p_provider_order_id:body.providerOrderId || null
-        })
-      });
-      return response.error ? result({error:response.error},response.status) : result(response.payload);
-    }
-    if (body.action === 'record_payment') {
-      const response = await database('/rest/v1/rpc/store_record_payment', {
-        method:'POST',
-        body:JSON.stringify({
-          p_provider_order_id:body.providerOrderId,
-          p_provider_payment_id:body.providerPaymentId
-        })
-      });
-      return result(response.payload);
-    }
     return result({error:'Unknown operation'},404);
   } catch (error) {
     console.error('Madikar store operation failed', error);
-    return result({error:'Store service is temporarily unavailable'},502);
+    return result({error:error.status && error.status < 500 ? error.message : 'Store service is temporarily unavailable'},error.status || 502);
   }
 });

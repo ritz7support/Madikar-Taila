@@ -4,17 +4,18 @@ import {createHash, generateKeyPairSync, webcrypto} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
-test('Supabase function rejects unsigned requests and accepts only signed catalog and order operations',async () => {
+test('Supabase function rejects unsigned requests and accepts signed catalog/admin operations and rejects retired order actions',async () => {
   const pair = generateKeyPairSync('ec',{namedCurve:'P-256'});
   const publicJwk = pair.publicKey.export({format:'jwk'});
   const privateJwk = pair.privateKey.export({format:'jwk'});
   const adminToken='a'.repeat(43);
-  const source = readFileSync('server/supabase-store-function.js','utf8')
-    .replace(/const PUBLIC_KEY = \{[^;]+;/,`const PUBLIC_KEY = ${JSON.stringify(publicJwk)};`)
+  const source = readFileSync(new URL('../../supabase/functions/madikar-store/index.ts',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'')
+    .replace(/const PUBLIC_KEYS = \[[\s\S]*?\];/,`const PUBLIC_KEYS = [${JSON.stringify(publicJwk)}];`)
     .replace(/const ADMIN_LINK_HASH = '[a-f0-9]{64}';/,`const ADMIN_LINK_HASH = '${createHash('sha256').update(adminToken).digest('hex')}';`);
   let handler;
   const databaseCalls = [];
   const sandbox = {
+    createCheckoutService:()=>({}),
     Deno:{env:{get:key => ({SUPABASE_URL:'https://supabase.example',SUPABASE_SECRET_KEYS:JSON.stringify({default:'sb_secret_test'})})[key]},serve:fn => {handler=fn}},
     crypto:webcrypto, TextEncoder, Response, Request, URL, atob, AbortSignal, Date,
     console:{error:() => {}},
@@ -28,7 +29,7 @@ test('Supabase function rejects unsigned requests and accepts only signed catalo
         return Response.json([{id:1,...updated}]);
       }
       if (String(url).includes('/Product?') && String(url).includes('id=eq.1')) return Response.json([{id:1,store_id:'p1',catalog_id:'1515875913870520'}]);
-      if (String(url).includes('/Product?')) return Response.json([{id:1,store_id:'p1',name:'Groundnut Oil',category:'Oils',short_description:'Groundnut oil',images:[{url:'assets/groundnut-oil.jpg',alt:'Groundnut Oil product image',kind:'product_photo'}]}]);
+      if (String(url).includes('/Product?')) return Response.json([{id:1,store_id:'p1',slug:'groundnut-oil',name:'Groundnut Oil',category:'Oils',website_description:'Groundnut oil',images:[{url:'assets/groundnut-oil.jpg',alt:'Groundnut Oil product image',kind:'product_photo'}]}]);
       if (String(url).includes('/ProductVariant?')) return Response.json([{product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:5,availability_status:'available'}]);
       if (String(url).includes('store_create_order')) return Response.json({reference:'STORE-TEST123',subtotalPaise:35000});
       if (String(url).includes('store_record_payment')) return Response.json({reference:'STORE-TEST123',status:'paid'});
@@ -49,11 +50,11 @@ test('Supabase function rejects unsigned requests and accepts only signed catalo
     return handler(new Request(endpoint,{method:'POST',headers:{'x-store-timestamp':stamp,'x-store-signature':signature},body:raw}));
   }
   const catalog = await send({action:'catalog'});
-  assert.deepEqual(await catalog.json(),{products:[{id:'p1',name:'Groundnut Oil',category:'Oils',note:'Groundnut oil',image:'assets/groundnut-oil.jpg',image_alt:'Groundnut Oil product image',image_kind:'product_photo',variants:[{size:'500 ml',price:175,available:true,orderable:true,availabilityStatus:'available',inventoryQuantity:5}]}]});
+  assert.deepEqual(await catalog.json(),{products:[{id:'p1',slug:'groundnut-oil',name:'Groundnut Oil',category:'Oils',note:'Groundnut oil',traditional_benefits:'',extraction_craft:'',ingredients_and_more:'',image:'assets/groundnut-oil.jpg',image_alt:'Groundnut Oil product image',image_kind:'product_photo',variants:[{size:'500 ml',price:175,available:true,orderable:true,availabilityStatus:'available',inventoryQuantity:5}]}]});
   const created = await send({action:'create_order',channel:'whatsapp',lines:[{id:'p1',variant:0,quantity:1}]});
-  assert.equal((await created.json()).reference,'STORE-TEST123');
+  assert.equal(created.status,404);
   const paid = await send({action:'record_payment',providerOrderId:'order_TEST123',providerPaymentId:'pay_TEST123'});
-  assert.equal((await paid.json()).status,'paid');
+  assert.equal(paid.status,404);
   const denied = await send({action:'admin_me',adminToken:'invalid'});
   assert.equal(denied.status,403);
   const admin = await send({action:'admin_me',adminToken});

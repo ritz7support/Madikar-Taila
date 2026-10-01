@@ -1,22 +1,22 @@
 # WhatsApp Flow App — Project Handoff
 
-Last reviewed: 29 September 2026. This bot handoff is part of the single Madikar Taila monorepo. For website work, start with `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Sections 14–15 preserve earlier bot work and a historical continuation prompt; `WEBSITE_HANDOFF.md` records the current website migration plan and latest live test. Supersedes `WhatsApp_Flow_Project_Handoff_September_2026_v6.docx` (deleted — it was stale).
+Last reviewed: 1 October 2026. Start with PROJECT_HANDOFF.md for the consolidated main baseline, current function counters and website version 24. All bot function sources match live. The owner-authored Razorpay help-line change is included. Older deployment counters and continuation prompts below are dated history; no bot runtime was changed during consolidation.
 
 ## 1. Source-of-truth rules
 
-- The **GitHub repo** (`https://github.com/samskruthrml21-eng/Madikar-Taila.git`, bot baseline on `main`) and the **live Supabase project** are both source of truth for the bot. The bot function source was confirmed identical to deployed source after the latest bot change. New website work belongs on `codex/website`.
+- The **GitHub repo** (`https://github.com/samskruthrml21-eng/Madikar-Taila.git`, bot baseline on `main`) and the **live Supabase project** are both source of truth for the bot. The bot function source was confirmed identical to deployed source after the latest bot change. Create future website work branches from consolidated main.
 - Before any WhatsApp Flow or WhatsApp Cloud API change, consult the latest Meta documentation and inspect the currently deployed function / the repo copy (they should match).
 - Before Supabase schema/RLS/migration changes, inspect the live schema and current advisories.
 - Make one focused change at a time; deploy the complete function via the Supabase CLI (`--use-api`, no Docker available on this machine); verify the active version; test the real runtime path; commit and push so the repo stays in sync.
 - Do not modify the working Address Flow JSON (`Latest Address Flow JSON_7.3.md`) unless a specific Flow-layer problem is demonstrated.
-- The existing Sites storefront uses the same Supabase project through its separate `madikar-store` function. The owner chose this repo as the future monorepo for both bot and website source; the current Sites source has not yet been migrated into `website/`. Before website work, read `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Do not change the bot's Edge Functions, shared module, applied migrations, or `config.toml` entries as a side effect of website work.
+- The existing Sites storefront uses the same Supabase project through its separate `madikar-store` function. The Sites source is already migrated into `website/` in this monorepo, and version 24 is published to the same Site. Before website work, read `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md`. Do not change the bot's Edge Functions, shared module, applied migrations, or `config.toml` entries as a side effect of website work. Preserve the explicitly requested download of the owner's manual Razorpay text change.
 - `Project_Instructions.md` is the working guide for any coding tool. The filename used to say "Cursor"; the contents are not tool-specific. The earlier `cursor/production-hardening` branch is retained as bot work history.
 
 ## 2. Business context
 
 - **Phase 1**: this is a WhatsApp ordering bot for "Madikar Taila" oil products (Sesame, Coconut, Safflower, Sunflower, Groundnut, Mustard, Almond). Customers place orders and pay entirely inside WhatsApp.
 - The client has viewed/fulfilled WhatsApp orders via a **Google Sheet fed by n8n** (Append operation, triggered from `razorpay-webhook` after a payment is confirmed). The Sites storefront now has a team `/admin` page for catalog and order access; verify its current capabilities before assuming it replaces the Sheet workflow.
-- The customer-facing e-commerce storefront already exists as the "Madikar Taila | Heritage Store" ChatGPT Site at `https://madikartaila.com`. Its source migration into this monorepo is pending; see `WEBSITE_HANDOFF.md`.
+- The customer-facing e-commerce storefront exists as the "Madikar Taila | Heritage Store" ChatGPT Site at `https://madikartaila.com`. Its source is in `website/`; product categories and detail pages, policies and website payments are implemented. See `WEBSITE_HANDOFF.md`.
 - Supabase project is currently on the **Free plan**. Free projects can be auto-paused after 7 days of low activity and have no downloadable backups — revisit before a real (non-test) launch.
 
 ## 3. Current Supabase project
@@ -44,13 +44,15 @@ Last reviewed: 29 September 2026. This bot handoff is part of the single Madikar
 
 ## 5. Current deployed Edge Functions
 
-| Function | Version (checked 28 Sep) | verify_jwt | Purpose |
+| Function | Last inspected version | verify_jwt | Purpose |
 |---|---|---|---|
-| `whatsapp-webhook` | v92 | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. Mints HMAC-signed flow tokens, uses atomic order creation, and sends `review_and_pay` followed by `change_address` after an address selection. Allows replacement of an order address only while `pending_payment`. Main menu includes the "Hi" reminder. |
-| `whatsapp-flow` | v48 | false | Flow INIT/data_exchange endpoint for the Address Flow and the shared registration/Settings Flow. Checks Meta's signature in **`enforce`** mode (see §9), and verifies HMAC-signed flow tokens. |
-| `razorpay-webhook` | v30 | false | Verifies Razorpay signature, processes `payment_link.paid`, updates payment/order state atomically via the `mark_payment_paid_and_advance_order` RPC, self-heals a stuck order on duplicate/retried deliveries, schedules `order_status` + n8n handoff, and handles `payment_link.expired`/`cancelled`. |
-| `sync-meta-catalog` | v9 | true | Pulls the full Meta catalog into `public.Product`. Manually triggered only (see §6). Guards against wiping the local catalog on an empty Meta response and quotes `retailer_id` inside the stale-cleanup filter. |
-| `retry-order-handoffs` | v4 | false | Called every 5 minutes by `pg_cron`; resends any due n8n order handoff. Can't do anything except resend what's already due, so it's safe without JWT auth. |
+| `whatsapp-webhook` | v93 (30 Sep) | false | Primary WhatsApp webhook — registration/profile, messages, cart/order creation, address-checkout orchestration, checkout messaging. Verifies Meta's `X-Hub-Signature-256`. Mints HMAC-signed flow tokens, uses atomic order creation, and sends `review_and_pay` followed by `change_address` after an address selection. Allows replacement of an order address only while `pending_payment`. Main menu includes the "Hi" reminder. |
+| `whatsapp-flow` | v48 (28 Sep) | false | Flow INIT/data_exchange endpoint for the Address Flow and the shared registration/Settings Flow. Checks Meta's signature in **`enforce`** mode (see §9), and verifies HMAC-signed flow tokens. |
+| `razorpay-webhook` | v32 (30 Sep) | false | Verifies Razorpay signature, processes `payment_link.paid`, updates payment/order state atomically via the `mark_payment_paid_and_advance_order` RPC, self-heals a stuck order on duplicate/retried deliveries, schedules `order_status` + n8n handoff, and handles `payment_link.expired`/`cancelled`. Payment confirmation now includes the owner's help phone line. |
+| `sync-meta-catalog` | v10 (30 Sep) | true | Pulls the full Meta catalog into `public.Product`. Manually triggered only (see §6). Guards against wiping the local catalog on an empty Meta response and quotes `retailer_id` inside the stale-cleanup filter. |
+| `retry-order-handoffs` | v4 (28 Sep) | false | Called every 5 minutes by `pg_cron`; resends any due n8n order handoff. Can't do anything except resend what's already due, so it's safe without JWT auth. |
+
+**Owner's manual edit, synchronized 30 Sep:** downloaded complete `razorpay-webhook` v32 source and copied it into the local branch. The only substantive change appends `Need help with your order? Contact us at 99722 67897.` to the existing payment-confirmation body. The bundled shared module matches the local copy and was not modified. No function was deployed, no secret was changed, and no real payment/message was sent by this synchronization. The local source/documentation update is not yet committed or pushed; the previous `main`/GitHub baseline is older than this manual live edit. Preserve it and consult the updated outbound JSON reference.
 
 (Platform version counters for `sync-meta-catalog`/`retry-order-handoffs` have again been observed to increment without any content change since the last handoff snapshot — confirmed via `download` + `git diff` showing zero diff before this session's edits. Content parity, not the raw version number, is what matters.)
 

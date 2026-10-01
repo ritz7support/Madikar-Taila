@@ -1,18 +1,47 @@
-# Product catalog schema — 30 September 2026
+# Product catalog schema — current checkpoint 1 October 2026
+
+**Current:** 59 visible website products, 90 available variants, 17 hidden Meta lookup rows. ProductVariant.product_name is synchronized from its parent; inventory quantities are NULL/untracked. See the final "Variant names and stock" section and PROJECT_HANDOFF.md. The dated September reconciliation sections below are history; statements that eight products are visible or product pages are pending are superseded.
+
+**Current website state after the later 30 September continuation:** All 59 canonical website groups are visible across the nine categories below; their 90 variants and 59 bucket image links are served through `madikar-store` v5. The 17 additional Meta lookup rows remain hidden. Sites version 15 serves `/products/<slug>` pages and browser redirects for old `/?product=<store_id>` links. The three optional detail fields remain empty and are hidden on product pages by owner choice. The counts and pending work described below are historical snapshots from before this continuation. See `WEBSITE_HANDOFF.md`.
 
 ## Decisions and current data
 
-The owner chose to keep the manually added products hidden for now. No products or variants were deleted.
+The owner's later cleanup instruction superseded the initial decision to keep all manual products. On 30 September, the catalog was reconciled against batch 1 (18 rows), batch 2 (48 rows), and the owner's updated batch 3 (3 rows), preserving the seven original oils and Mango pickle as explicitly confirmed.
 
-Live review found 84 products and 115 variants:
-- Seven Meta-linked products, IDs 1–7, catalog `1515875913870520`. All seven have order-item references and must be retained.
-- Four manually added products currently listed on the website: Black Sesame Oil (15), Flaxseed Oil (16), Niger / Huchellu Oil (17), Castor Oil (18).
-- Seventy-three manually added products remain hidden, IDs 19–91, catalog `madikar-store`. They have 87 variant rows and had no order-item references at review time.
-- Eight products are visible overall: four Meta-linked oils and the four manual oils above. Coconut, Almond and Sesame Oil are currently hidden.
+Current live state:
+- 76 Product rows: seven original oils plus one lookup row for each of the 69 CSV retailer IDs, all under catalog `1515875913870520`.
+- 59 website product groups with `store_id`: the seven original oils plus 52 CSV groups. Their 90 ProductVariant rows comprise 21 unchanged original-oil variants and 69 CSV variants.
+- 17 additional Meta lookup rows have `store_id = null`, `slug = null`, and `store_active = false`. They let the unmodified bot resolve additional pack-size retailer IDs without duplicate website listings. Sixteen rows were inserted; the existing four-pack soap row (81) became the seventeenth.
+- Deleted 24 products and 25 variants absent from the approved inputs. None had order references.
+- Eight products remain visible: Mustard, Sunflower, Safflower and Groundnut oils, plus Black Sesame (15), Flaxseed (16), Niger / Huchellu (17), and Castor (18). Coconut, Almond and Sesame remain hidden, as do the other retained products.
+- Every Product image now points to the existing public `madikar-product-images` bucket. Uploaded 55 files and retained four existing bucket URLs; all 59 distinct linked images were publicly fetched and decoded successfully. No bucket named `products` was created.
+
+No columns, constraints, triggers, table grants, Edge Functions or website code were changed by this reconciliation. Full backups, copied input CSVs, applied SQL, image inventory, exact retailer/variant mapping and verification are in `outputs/catalog-reconciliation-20260930/`; start with `REPORT.md`.
 
 Future product pages will use `https://madikartaila.com/products/groundnut-oil`. The database stores only `groundnut-oil`. Page routing and replacement of the popup are future UI work; these URLs are not implemented by this database migration.
 
-## Added fields
+## Category inventory for the next website phase
+
+From the saved post-reconciliation snapshot, 30 September 2026, 08:08:48 UTC. Recheck live data before changing visibility.
+
+| Current category | Website groups | Listed | Hidden |
+| --- | ---: | ---: | ---: |
+| Oils | 14 | 8 | 6 |
+| Special | 12 | 0 | 12 |
+| Chutney Powder | 9 | 0 | 9 |
+| Millets | 6 | 0 | 6 |
+| Pickles | 5 | 0 | 5 |
+| Soaps | 5 | 0 | 5 |
+| Teas | 4 | 0 | 4 |
+| Essentials | 3 | 0 | 3 |
+| Ghee | 1 | 0 | 1 |
+| **Total** | **59** | **8** | **51** |
+
+The owner's next requested phase is to display the other retained categories/products and implement separate product pages. Visibility changes have not yet been made. Category counts exclude all 17 bot-only lookup rows. All 59 website groups have short `website_description` text; all three detail columns are empty. Render source-backed descriptions, hide empty sections, and request missing content instead of inventing it.
+
+The current public API returns legacy display fields and variants, not the new slug/detail fields. Exposing those fields and implementing `/products/<slug>` routes is still pending. Preserve existing `/?product=<store_id>` links and cart identity. Sites version 14 adds catalog retries and a Try again button, but does not implement product pages or solve the underlying intermittent database authentication failure.
+
+## Fields added by the earlier content migration
 
 Migration `20260929191323_add_product_website_content.sql` was applied to live project `faoomjgkofqrdajaftjd`.
 
@@ -26,7 +55,7 @@ Migration `20260929191323_add_product_website_content.sql` was applied to live p
 
 The three new detail columns are nullable and were left empty. No benefits or ingredient information was invented. `slug` permits null for newly synced Meta products so importing a product does not depend on publishing its website page. Assign a unique lowercase slug before publishing those products.
 
-The current `madikar-store` v3 API and admin UI use `short_description`. A new trigger, `sync_product_website_description`, keeps it synchronized with `website_description` in either direction, including clearing a value. Conflicting simultaneous writes are rejected. After the API/admin switch to the new name, the legacy column and compatibility trigger can be removed together in a separate reviewed migration.
+The current `madikar-store` v4 API and admin UI use `short_description`; its deployed source matched the tracked file at the last inspection. The trigger `sync_product_website_description` keeps it synchronized with `website_description` in either direction, including clearing a value. Conflicting simultaneous writes are rejected. After the API/admin switch to the new name, the legacy column and compatibility trigger can be removed together in a separate reviewed migration.
 
 Meta `description` remains the combined text imported from Meta. Sync does not parse it into the website fields, and no automatic composition back to Meta was added.
 
@@ -62,9 +91,15 @@ Groundnut Oil currently has:
 
 The existing Meta sync only imports retailer ID, name, description, URL, catalog ID and update time. It does not import variant sizes or prices. Newly synced products therefore need website setup and ProductVariant records before listing.
 
-When a manual product is later added to Meta, match it deliberately to its existing row before/with sync. Sync matches `(catalog_id, retailer_id)`, not product names; an uncoordinated sync would create a separate Meta row for the same product. Preserve the existing Product ID, website ID, slug, images and variant records when linking it. If the Meta catalog will contain one item per pack size, design the variant-to-retailer-ID mapping before changing the sync.
+Each CSV item now has a real Meta retailer ID lookup in Product. For a multi-size group, the first item uses the existing website parent; extra items use hidden Product rows. ProductVariant records remain together on the website parent. The exact mapping is saved in `outputs/catalog-reconciliation-20260930/retailer-variant-mapping.json`; there is no new database mapping column or automatic variant synchronization. Do not add website IDs or activate the hidden lookup rows.
 
-## Verification and boundaries
+Panchagavya's single bar and four-pack share website parent Product 80. Variant 105 moved from Product 81 to 80; Product 81 retains the four-pack retailer ID solely for bot lookup. Batch 3 Rose and Mango pickle are also retained.
+
+Before a future sync, ensure Meta has accepted every intended batch item. This reconciliation did not upload to Meta or invoke `sync-meta-catalog`. Sync removes stale rows: its existing protection covers only `store_active` website rows, so a missing hidden website parent can be deleted along with its variants. Do not run sync while a batch is incomplete. Future linking must deliberately preserve parent Product IDs, website IDs, image fields and grouped variants.
+
+CSV descriptions, categories, links, retailer IDs, pack sizes, prices and available status were applied. Existing website short descriptions and detail fields were retained. Feed-only metadata with no existing column (such as brand or origin country) was not added to the database.
+
+## Earlier content-migration verification
 
 - Deployed `whatsapp-webhook` v92, `sync-meta-catalog` v9 and `madikar-store` v3 matched their tracked source at review time.
 - Ran the schema and compatibility checks in a transaction and rolled back before the final migration.
@@ -73,3 +108,17 @@ When a manual product is later added to Meta, match it deliberately to its exist
 - Existing Product fields and all ProductVariant rows had identical before/after fingerprints; 84 products, 115 variants and 8 visible products remained.
 - RLS and table grants were preserved. Security advisor findings were unchanged.
 - No Edge Function, bot configuration, old migration, website UI, or Sites deployment was changed in this update.
+
+## Catalog reconciliation verification
+
+- Inspected live `madikar-store` v4 and `sync-meta-catalog` v10 and confirmed their source matches the tracked functions after line-ending normalization. Inspected the live `whatsapp-webhook` v93 product lookup contract.
+- Rehearsed the entire data transaction with a rollback, then applied it with snapshot guards, table locks, exact row-count checks and original-oil/order-reference assertions.
+- Compared the final live snapshot against all 69 input rows and the planned variants. Verified 76 Product rows, 90 variants, 59 website groups and 17 hidden lookup rows.
+- Compared before/after columns, constraints, triggers, grants and bucket settings: unchanged. Original oil fields are unchanged except image locations and update timestamps; all 21 original oil variants are identical.
+- Fetched `https://madikartaila.com/api/catalog`: HTTP 200, eight expected visible products with matching variants, prices and bucket image links.
+- No bot or website function was edited/deployed. No Meta sync was invoked. No order or payment action was performed.
+
+
+## Variant names and stock — 1 October 2026
+
+ProductVariant.product_name mirrors Product.store_name (falling back to Product.name). Backfilled all 90 variants; website-only trigger functions keep new/reassigned variants and parent renames synchronized without changing bot handlers. All 90 variants are available, including the previously unavailable Coconut Oil (200 ml, 500 ml, 1 L), Sesame Oil (1 L), and Almond Oil (100 ml, 200 ml). Quantities remain NULL (untracked); no stock counts were invented. Product visibility, IDs, prices, names, sizes and bot RPCs are preserved. Migration: 20261001044758_variant_product_names_and_availability.

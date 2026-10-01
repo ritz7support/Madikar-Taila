@@ -1,26 +1,30 @@
 # Madikar Taila — Project Instructions
 
-Last updated: 30 September 2026.
+Last updated: 1 October 2026.
 
-These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. Completed bot work is on `main`; use `codex/website` for new website work. The older `cursor/production-hardening` branch is retained as bot work history.
+Latest checkpoint: main consolidates the bot and website. Start with PROJECT_HANDOFF.md. Sites version 24 is public; madikar-store v10 matches deployed source. Preserve both public signing keys, the bot help-line update and all local outputs.
+
+These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. Completed bot and website work is consolidated on `main`; create new `codex/` work branches from current main. The older `cursor/production-hardening` branch is retained as bot work history.
 
 ## Monorepo boundary
 
-The owner chose one local/GitHub monorepo for the bot and website: `D:\cursor projects\Madikar taila` / `samskruthrml21-eng/Madikar-Taila`. The current ChatGPT Sites source is in `website/`. It was opened from the existing Site and successfully published back to the same project as version 13. Sites retains a managed publishing repository; use `website/scripts/sync-to-sites.mjs` to mirror this source to a separate Sites checkout. Do not create a second GitHub repo or a replacement Site. Keep website changes scoped to `website/` and website-specific Supabase objects. Read `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md` first.
+The owner chose one local/GitHub monorepo for the bot and website: `D:\cursor projects\Madikar taila` / `samskruthrml21-eng/Madikar-Taila`. The current ChatGPT Sites source is already in `website/`. Migration was published as version 13; the latest publication is version 24, including payments, policies, catalog availability and visual fixes. Sites retains a managed publishing repository; use `website/scripts/sync-to-sites.mjs` to mirror this source to a separate Sites checkout. Do not create a second GitHub repo or a replacement Site. Keep website changes scoped to `website/` and website-specific Supabase objects. Read `WEBSITE_HANDOFF.md` and `BOT_BACKEND_DO_NOT_TOUCH.md` first. The handoff records current state and local evidence that must be preserved.
 
-The existing bot function directories under `supabase/functions/` are protected. The separate live website function `madikar-store` v3 is tracked at `supabase/functions/madikar-store/index.ts` after a live-source parity check. It was not redeployed during migration. The copy at `website/server/supabase-store-function.js` is historical and differs from live v3. Never run an all-functions deploy for website work.
+The existing bot function directories under `supabase/functions/` are protected. The separate website function `madikar-store` v10 matches its local index.ts, checkout.ts and confirmation.ts (1 October). The copy at `website/server/supabase-store-function.js` is historical. Never run an all-functions deploy for website work.
 
 ## Runtime source of truth
 The GitHub repo (`https://github.com/samskruthrml21-eng/Madikar-Taila.git`) and the live Supabase Edge Functions/database are both source of truth for the bot. The completed bot work is on `main`, and its function source was confirmed identical to the deployed source after the latest bot change. Treat a mismatch as a bug to investigate, not something to silently paper over.
 
-Current functions (see `WhatsApp_Flow_Project_Handoff.md` §5 for full detail):
-- whatsapp-webhook v92
-- whatsapp-flow v48
-- razorpay-webhook v30
-- sync-meta-catalog v9
-- retry-order-handoffs v4
+Last inspected bot versions (see `WhatsApp_Flow_Project_Handoff.md` §5 for deployment history):
+- whatsapp-webhook v94 (1 Oct)
+- whatsapp-flow v50 (1 Oct)
+- razorpay-webhook v33 (1 Oct; owner's message-text update preserved)
+- sync-meta-catalog v11 (1 Oct)
+- retry-order-handoffs v6 (1 Oct)
 
 (Platform version counters drift upward without content changes on some of these — confirmed via `download` + `git diff` showing zero diff. Content parity is the signal that matters, not the raw number.)
+
+On 30 Sep the owner explicitly requested synchronization of a manual live `razorpay-webhook` edit. The local file now matches the deployed v32 source, which appends the help phone line `Need help with your order? Contact us at 99722 67897.` to the payment-confirmation message. The shared module matched and was not edited. No deployment occurred. This change is included in the 1 October main consolidation; all deployed bot sources were rechecked against local files.
 
 Order creation (`whatsapp-webhook`) and payment→order advancement (`razorpay-webhook`) are atomic via three Postgres RPC functions added in migration `20260924155516_add_transactional_order_and_payment_rpcs.sql` (`create_order_with_items`, `advance_order_to_processing`, `mark_payment_paid_and_advance_order`) — **live-tested successfully** on a real test order (24 Sep night), clean end-to-end.
 
@@ -69,9 +73,19 @@ The website also uses `store_id, category, short_description, images, store_sort
 
 Website pack sizes and prices live in `ProductVariant`, linked to `Product.id`. The bot still uses the incoming WhatsApp order-item price. The current Meta sync does not populate website variants or prices.
 
-The owner chose to retain the 73 hidden manual products. All seven Meta products and four listed manual oils also remain. Future detail pages will use `/products/<slug>`; page routing is not implemented yet. See `PRODUCT_CATALOG_SCHEMA.md` for the live schema review, field purposes, and future Meta linking requirements.
+The owner's later cleanup instruction superseded the initial decision to retain all hidden manual products. On 30 Sep, batch 1 + batch 2 + the owner's updated batch 3 were applied: 24 products and 25 variants absent from those files were deleted. The original seven oils and their 21 variants were explicitly retained, as was Mango pickle. Current totals are 76 Product rows, 90 variants, 59 website groups and eight visible products. There are 17 hidden Product lookup rows for extra Meta pack-size IDs; they have no `store_id` or slug and must not be activated as website products. The 69 CSV retailer IDs all resolve under catalog `1515875913870520`. No new columns were added during reconciliation.
 
-## Current main menu
+All Product images use the existing `madikar-product-images` bucket. Full before/after snapshots, copied batch files, applied transaction, image inventory and the exact retailer-to-parent/variant mapping are in `outputs/catalog-reconciliation-20260930/`; start with `REPORT.md`. Live `madikar-store` v4 and `sync-meta-catalog` v10 matched tracked source during this review; `whatsapp-webhook` v93's lookup contract was inspected. Catalog reconciliation involved no Edge Function or website deployment. The later frontend recovery fix was published as Sites version 14.
+
+Ensure all intended batch items are accepted in Meta before the next manual sync. Stale cleanup protects only `store_active` rows; missing hidden parent products can be deleted with their website variants. Do not automatically regroup or activate the separate Meta lookup rows. Future detail pages will use `/products/<slug>`; page routing is not implemented yet. See `PRODUCT_CATALOG_SCHEMA.md` for field purposes and the current mapping.
+
+## Next website scope
+
+The owner will continue in a new chat to display more retained products/categories and build separate `/products/<slug>` pages. There are 59 website groups across nine current categories, with 51 groups still hidden. Publish canonical website parents only, keeping the 17 bot lookup rows hidden. Reuse existing content columns and database variants; do not add columns, restore deleted seed products or break existing `/?product=<store_id>` links. Read the detailed continuation plan in `WEBSITE_HANDOFF.md` before editing.
+
+Sites version 14 adds at most three attempts for transient catalog failures and a Try again button. Five tests in `website/tests/catalog-loading.test.mjs` passed; the live page displayed all eight currently listed products. The underlying intermittent Supabase database authentication failure (`401 PGRST303`, leading to website 503) is unresolved. Preserve the recovery behavior; investigate current logs before changing authentication. Website order RPCs were absent at the last schema inspection, so product-page work must not enable checkout incidentally.
+
+## Current main menu (bot)
 Only:
 - Place a new order
 - Settings
@@ -110,3 +124,8 @@ Use these project sources together:
 (The three `.docx` files previously listed here have been deleted — they were stale as of 23 Sep and are fully superseded by the three `.md` files above.)
 
 Do not assume any document is newer than the live deployment. If they conflict, inspect the live deployment and treat it as authoritative, then update the doc.
+
+
+## Standing checkout constraint — 30 September 2026
+
+The owner explicitly requires that website work must never affect the working WhatsApp bot. Preserve bot handlers, shared code, secrets, configuration, RPCs, privileges and existing scheduled jobs. Website checkout has its own authenticated recovery and fulfilment path. Existing profiles and saved/default addresses must not be overwritten by guest checkout. Additive shared-schema changes require compatibility checks and regression verification before application. See `website/PAYMENTS.md` for the isolated website implementation and outstanding activation checks.

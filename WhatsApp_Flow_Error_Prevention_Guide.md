@@ -1,6 +1,8 @@
 # WhatsApp Flow App — Error & Prevention Guide
 
-Last reviewed: 29 September 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale). Historical incidents retain their original dates; see §14 for the checked bot baseline.
+Last reviewed: 30 September 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale). Historical incidents retain their original dates; see §14 for the earlier checked bot baseline and `WEBSITE_HANDOFF.md` for the current checkpoint.
+
+**Manual-edit reconciliation, 30 Sep:** the owner added `Need help with your order? Contact us at 99722 67897.` to the live Razorpay payment-confirmation message. Complete `razorpay-webhook` v32 source was retrieved and copied into the local branch; the shared handoff module matches and was not changed. The outbound JSON reference was updated. This was a source synchronization, with no deployment, secret change or live payment test. Preserve the change when resuming website work.
 
 ## 1. Product-name lesson
 
@@ -38,7 +40,7 @@ After deploying, re-download with `supabase functions download --use-api` and `g
 - Store the generated URL in `payments.provider_payment_link_url` and use that stored URL in `review_and_pay` — never reconstruct it.
 - Never treat the Razorpay callback redirect as proof of payment. `payment_link.paid` from the verified webhook is authoritative.
 - When testing a newly deployed Payment Link configuration, create a **new** order — an existing pending/processing payment record reuses its already-stored URL.
-- Razorpay rejects any `expire_by` less than **15 minutes** in the future with a 400 error (`"epoch time passed is less than 15 minutes from the current time"`). WhatsApp's `order_details.order.expiration.timestamp` has its own minimum of **300 seconds**, and Meta's payment-link docs say to use the *same* expiry on both. Currently the link is 24h and the card has no expiry — plan to move both to ~15 minutes together, not independently.
+- Razorpay rejects any `expire_by` less than **15 minutes** in the future with a 400 error (`"epoch time passed is less than 15 minutes from the current time"`). WhatsApp's `order_details.order.expiration.timestamp` has its own minimum of **300 seconds**, and Meta's payment-link docs say to use the *same* expiry on both. The implemented window is approximately 16 minutes, with the card timestamp sourced from the stored payment expiry; see §17. The former 24-hour/no-card-expiry state is historical.
 - `RAZORPAY_MODE` (`test`/`live`) is deliberately a single-word switch backed by fully separate test/live key pairs and webhook secrets, so QA can flip modes without touching code. **Fixed 25 Sep**: the value must now be exactly `test` or `live`; anything else fails loudly (checkout refuses to call Razorpay, `razorpay-webhook` returns 500 so Razorpay retries) instead of silently falling back to test. Before making a check like this strict, confirm the live secret actually holds a valid value (done here by comparing the `secrets list` digest against `sha256("test")`) — otherwise the hardening itself takes payments down. Still open: `razorpay-webhook` currently only tries the webhook secret matching the *current* `RAZORPAY_MODE`; if mode is flipped after a live payment's webhook is in flight, that webhook's signature check will fail. Trying both secrets and tagging which mode a payment came from is on the outstanding-work list.
 
 ## 7. Meta Catalog — now manual-only (changed 23–24 Sep)

@@ -1,21 +1,18 @@
 const products = [];
-const categoryOrder = ['Oils','Pantry','Millets','Chutneys & Spices','Pickles','Ghee','Drinks','Teas','Personal Care','Garden'];
+const categoryOrder = ['Oils','Millets','Chutney Powder','Pickles','Ghee','Teas','Soaps','Essentials','Special'];
 const categories = () => ['All products',...categoryOrder.filter(c => products.some(p => p.category === c)),...new Set(products.map(p => p.category).filter(c => !categoryOrder.includes(c)))];
 const palette = {
   'Oils':['#e8dbc2','#bd924b'],'Pantry':['#e8dac7','#b48060'],'Millets':['#e6e1ca','#879461'],
   'Chutneys & Spices':['#ecd8c9','#a86448'],'Pickles':['#e1dfc8','#71834e'],'Ghee':['#f1e1bc','#c89a42'],
-  'Drinks':['#e2d6ca','#976e6b'],'Teas':['#dfe4d4','#7c9273'],'Personal Care':['#e8dadd','#ac828e'],'Garden':['#dce2d3','#6c8661']
+  'Teas':['#dfe4d4','#7c9273'],'Soaps':['#e8dadd','#ac828e'],'Essentials':['#dce2d3','#6c8661'],
+  'Special':['#e8dac7','#b48060'],'Chutney Powder':['#ecd8c9','#a86448']
 };
 const $ = s => document.querySelector(s);
 const money = n => '₹' + Number(n).toLocaleString('en-IN');
 const byId = id => products.find(p => p.id === id);
 const escapeXml = s => String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-const productUrl = p => {
-  const url = new URL('/', location.origin);
-  url.searchParams.set('product',p.id);
-  return url.href;
-};
-const productFromUrl = () => byId(new URLSearchParams(location.search).get('product'));
+const productUrl = p => `/products/${encodeURIComponent(p.slug)}`;
+const slugFromPath = () => location.pathname.match(/^\/products\/([^/]+)\/?$/)?.[1] || null;
 const storeTitle = document.title;
 function titleLines(name){const words=name.split(' '), lines=['']; for(const w of words){let i=lines.length-1;if((lines[i]+' '+w).trim().length>19 && lines.length<3) lines.push(w); else lines[i]=(lines[i]+' '+w).trim()}return lines;}
 function brandedImage(p){
@@ -25,12 +22,13 @@ function brandedImage(p){
   return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
 }
 function imageFor(p){
-  if (/^assets\/[A-Za-z0-9_.-]+$/.test(p.image || '')) return p.image;
+  if (/^assets\/[A-Za-z0-9_.-]+$/.test(p.image || '')) return '/' + p.image;
   try { const url = new URL(p.image); if (url.protocol === 'https:' && url.hostname.endsWith('.supabase.co')) return url.href; } catch {}
   return brandedImage(p);
 }
-const state={category:'All products',query:'',sort:'featured',cart:{},selection:{},modal:null};
+const state={category:'All products',query:'',sort:'featured',cart:{},selection:{},detail:null};
 let catalogState = 'loading';
+let catalogLoading = false;
 try{state.cart=JSON.parse(localStorage.getItem('madikar-cart')||'{}')||{}}catch{}
 const saveCart=()=>{try{localStorage.setItem('madikar-cart',JSON.stringify(state.cart))}catch{}};
 const variantsOf=p=>p.variants;
@@ -49,9 +47,9 @@ function filteredProducts(){
 }
 function renderProducts(){
   if (catalogState !== 'ready') {
-    $('#result-count').textContent = '…';
+    $('#result-count').textContent = catalogState === 'loading' ? '…' : '—';
     $('#no-results').hidden = true;
-    $('#product-grid').innerHTML = `<p class="catalog-message" role="status">${catalogState === 'loading' ? 'Loading the collection…' : 'The collection is temporarily unavailable. Please try again shortly.'}</p>`;
+    $('#product-grid').innerHTML = `<div class="catalog-message"><p role="status">${catalogState === 'loading' ? 'Loading the collection…' : 'We couldn’t load the collection. Please try again.'}</p>${catalogState === 'error' ? '<button type="button" class="catalog-retry" data-action="retry-catalog">Try again</button>' : ''}</div>`;
     return;
   }
   const list=filteredProducts(); $('#result-count').textContent=list.length;
@@ -60,78 +58,111 @@ function renderProducts(){
     const selected=state.selection[p.id]||0, v=p.variants[selected];
     const opts=p.variants.map((v,i)=>`<option value="${i}" ${i===selected?'selected':''}>${escapeXml(v.size)}${v.orderable===false?' — out of stock':''}</option>`).join('');
     const link=escapeXml(productUrl(p));
-    return `<article class="product-card" data-id="${escapeXml(p.id)}"><a class="product-media" href="${link}" data-action="detail" aria-label="View ${escapeXml(p.name)} details"><img loading="lazy" src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt ? 'supplied-product-image' : ''}">${p.imageAlt ? '' : '<img class="brand-stamp" src="assets/brand-stamp.svg" alt="" aria-hidden="true"><span class="image-label">Illustrative image</span>'}</a><div class="product-info"><div class="category-kicker">${escapeXml(p.category)}</div><a class="product-title" href="${link}" data-action="detail">${escapeXml(p.name)}</a><p class="product-note">${escapeXml(p.note)}</p><div class="card-bottom"><select class="variant-select" data-action="variant" aria-label="Choose size for ${escapeXml(p.name)}">${opts}</select><div class="availability-label">${availabilityLabel(v)}</div><div class="price-row"><strong class="price">${money(v.price)}</strong><button class="add-button" type="button" data-action="add" aria-label="Add ${escapeXml(p.name)}, ${escapeXml(v.size)}, to bag" ${v.orderable===false?'disabled':''}>+</button></div></div></div></article>`
+    return `<article class="product-card" data-id="${escapeXml(p.id)}"><a class="product-media" href="${link}" data-action="detail" aria-label="View ${escapeXml(p.name)} details"><img loading="lazy" src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt ? 'supplied-product-image' : ''}">${p.imageAlt ? '' : '<img class="brand-stamp" src="/assets/brand-stamp.svg" alt="" aria-hidden="true"><span class="image-label">Illustrative image</span>'}</a><div class="product-info"><div class="category-kicker">${escapeXml(p.category)}</div><a class="product-title" href="${link}" data-action="detail">${escapeXml(p.name)}</a><p class="product-note">${escapeXml(p.note)}</p><div class="card-bottom"><select class="variant-select" data-action="variant" aria-label="Choose size for ${escapeXml(p.name)}">${opts}</select><div class="availability-label">${availabilityLabel(v)}</div><div class="price-row"><strong class="price">${money(v.price)}</strong><button class="add-button" type="button" data-action="add" aria-label="Add ${escapeXml(p.name)}, ${escapeXml(v.size)}, to bag" ${v.orderable===false?'disabled':''}>+</button></div></div></div></article>`
   }).join('');
 }
 function cartEntries(){return Object.entries(state.cart).filter(([,q])=>q>0).map(([key,qty])=>{const [id,index]=key.split(':');const p=byId(id),v=p?.variants[Number(index)];return p&&v?{key,qty,p,v}:null}).filter(Boolean)}
 function renderCart(){
   const entries=cartEntries(), count=entries.reduce((a,e)=>a+e.qty,0), total=entries.reduce((a,e)=>a+e.qty*e.v.price,0);
   $('#cart-count').textContent=count;$('#cart-total').textContent=money(total);
-  $('#cart-items').innerHTML=entries.length?entries.map(e=>`<div class="cart-item" data-key="${escapeXml(e.key)}"><div class="cart-thumb branded-photo"><img src="${escapeXml(imageFor(e.p))}" alt="" class="${e.p.imageAlt ? 'supplied-product-image' : ''}">${e.p.imageAlt ? '' : '<img class="brand-stamp" src="assets/brand-stamp.svg" alt="" aria-hidden="true">'}</div><div><h3>${escapeXml(e.p.name)}</h3><small>${escapeXml(e.v.size)}</small><div class="qty-controls"><button type="button" data-qty="-1" aria-label="Remove one ${escapeXml(e.p.name)}">−</button><span>${e.qty}</span><button type="button" data-qty="1" aria-label="Add one ${escapeXml(e.p.name)}">+</button></div></div><strong>${money(e.qty*e.v.price)}</strong></div>`).join(''):'<div class="cart-empty"><strong>Your bag is waiting.</strong><p>Add something lovely from the collection.</p></div>';
+  $('#cart-items').innerHTML=entries.length?entries.map(e=>`<div class="cart-item" data-key="${escapeXml(e.key)}"><div class="cart-thumb branded-photo"><img src="${escapeXml(imageFor(e.p))}" alt="" class="${e.p.imageAlt ? 'supplied-product-image' : ''}">${e.p.imageAlt ? '' : '<img class="brand-stamp" src="/assets/brand-stamp.svg" alt="" aria-hidden="true">'}</div><div><h3>${escapeXml(e.p.name)}</h3><small>${escapeXml(e.v.size)}</small><div class="qty-controls"><button type="button" data-qty="-1" aria-label="Remove one ${escapeXml(e.p.name)}">−</button><span>${e.qty}</span><button type="button" data-qty="1" aria-label="Add one ${escapeXml(e.p.name)}">+</button></div></div><strong>${money(e.qty*e.v.price)}</strong></div>`).join(''):'<div class="cart-empty"><strong>Your bag is waiting.</strong><p>Add something lovely from the collection.</p></div>';
   $('#checkout-open').disabled=!entries.length;
 }
 function addToCart(p,index){if(p.variants[index]?.orderable===false)return;const key=`${p.id}:${index}`;state.cart[key]=(state.cart[key]||0)+1;saveCart();renderCart();openCart()}
-function openCart(){closeModal();$('#drawer-overlay').hidden=false;$('#cart-drawer').classList.add('open');$('#cart-drawer').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';$('#cart-close').focus()}
+function openCart(){$('#drawer-overlay').hidden=false;$('#cart-drawer').classList.add('open');$('#cart-drawer').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';$('#cart-close').focus()}
 function closeCart(){$('#drawer-overlay').hidden=true;$('#cart-drawer').classList.remove('open');$('#cart-drawer').setAttribute('aria-hidden','true');document.body.style.overflow=''}
-function openModal(p,{pushUrl=true}={}){
-  closeCart();
-  if(pushUrl && new URLSearchParams(location.search).get('product')!==p.id) history.pushState({product:p.id},'',productUrl(p));
-  state.modal=p.id;
-  document.title=`${p.name} | Madikar Taila`;
-  const v=selectedVariant(p),link=escapeXml(productUrl(p));
-  $('#modal-content').innerHTML=`<div class="modal-grid"><div class="modal-visual branded-photo"><img src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt ? 'supplied-product-image' : ''}">${p.imageAlt ? '' : '<img class="brand-stamp" src="assets/brand-stamp.svg" alt="" aria-hidden="true"><span class="illustrative-tag">Illustrative image</span>'}</div><div class="modal-info"><div class="category-kicker">${escapeXml(p.category)}</div><h2 id="modal-title">${escapeXml(p.name)}</h2><p>${escapeXml(p.note)}</p><label for="modal-variant">Choose pack size<select id="modal-variant">${p.variants.map((v,i)=>`<option value="${i}" ${i===(state.selection[p.id]||0)?'selected':''}>${escapeXml(v.size)}${v.orderable===false?' — out of stock':''}</option>`).join('')}</select></label><div class="modal-price" id="modal-price">${money(v.price)}</div><div class="availability-label" id="modal-availability">${availabilityLabel(v)}</div><button type="button" class="modal-add" id="modal-add" ${v.orderable===false?'disabled':''}>Add to bag</button><div class="product-share"><div class="share-label">Product link for WhatsApp</div><div class="product-share-row"><input id="product-share-url" type="url" readonly aria-label="Product link" value="${link}"><button type="button" id="copy-product-link">Copy link</button></div><p id="product-share-status" role="status" aria-live="polite"></p></div><p class="illustrative">${p.imageAlt ? '' : 'Illustrative image. '}Product details and final price should be confirmed with Madikar Taila.</p></div></div>`;
-  $('#product-overlay').hidden=false;$('#product-modal').classList.add('open');$('#product-modal').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';$('#modal-close').focus();
-}
-function closeModal({clearUrl=true}={}){
-  const wasOpen=Boolean(state.modal);
-  $('#product-overlay').hidden=true;$('#product-modal').classList.remove('open');$('#product-modal').setAttribute('aria-hidden','true');state.modal=null;document.body.style.overflow='';document.title=storeTitle;
-  if(clearUrl && wasOpen && new URLSearchParams(location.search).has('product')){
-    const url=new URL(location.href);url.searchParams.delete('product');history.replaceState({},'',url);
+const detailText = text => escapeXml(text).replaceAll('\n','<br>');
+function renderRoute(){
+  const legacyId=location.pathname==='/' ? new URLSearchParams(location.search).get('product') : null;
+  if(legacyId && catalogState==='ready'){
+    const legacy=byId(legacyId);
+    if(legacy) history.replaceState({},'',productUrl(legacy));
   }
-}
-function syncProductFromUrl(){
-  const p=productFromUrl();
-  if(p && state.modal!==p.id) openModal(p,{pushUrl:false});
-  else if(!p && state.modal) closeModal({clearUrl:false});
+  const slug=slugFromPath();
+  const isDetail=Boolean(slug || (legacyId && catalogState==='ready'));
+  document.body.classList.toggle('product-route',isDetail);
+  $('#product-page').hidden=!isDetail;
+  if(!isDetail){state.detail=null;document.title=storeTitle;return}
+  if(catalogState!=='ready'){
+    $('#product-page').innerHTML=`<div class="detail-state" role="status"><p>${catalogState==='loading'?'Loading product…':'We couldn’t load this product. Please try again.'}</p>${catalogState==='error'?'<button type="button" class="catalog-retry" data-action="retry-catalog">Try again</button>':''}</div>`;
+    return;
+  }
+  let decodedSlug=null;
+  try { if(slug) decodedSlug=decodeURIComponent(slug); } catch {}
+  const p=decodedSlug ? products.find(item=>item.slug===decodedSlug) : null;
+  if(!p){
+    state.detail=null;
+    document.title='Product not found | Madikar Taila';
+    $('#product-page').innerHTML='<div class="detail-state"><h1>Product not found</h1><p>This product is not in the current collection.</p><a class="outline-button" href="/#shop">Shop all products</a></div>';
+    return;
+  }
+  state.detail=p.id;
+  document.title=`${p.name} | Madikar Taila`;
+  const v=selectedVariant(p);
+  const section=(title,value)=>value?.trim()?`<section class="detail-section"><h2>${title}</h2><p>${detailText(value)}</p></section>`:'';
+  $('#product-page').innerHTML=`<a class="detail-back" href="/#shop">← All products</a><div class="detail-grid"><div class="detail-visual"><img src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt?'supplied-product-image':''}"></div><div class="detail-info"><div class="category-kicker">${escapeXml(p.category)}</div><h1>${escapeXml(p.name)}</h1><p class="detail-note">${detailText(p.note)}</p><label for="detail-variant">Choose pack size</label><select id="detail-variant">${p.variants.map((variant,i)=>`<option value="${i}" ${i===(state.selection[p.id]||0)?'selected':''}>${escapeXml(variant.size)}${variant.orderable===false?' — out of stock':''}</option>`).join('')}</select><div class="detail-price" id="detail-price">${money(v.price)}</div><div class="availability-label" id="detail-availability">${availabilityLabel(v)}</div><button type="button" class="detail-add" id="detail-add" ${v.orderable===false?'disabled':''}>Add to bag</button><div class="product-share"><div class="share-label">Product link for WhatsApp</div><div class="product-share-row"><input id="product-share-url" type="url" readonly aria-label="Product link" value="${escapeXml(new URL(productUrl(p),location.origin).href)}"><button type="button" id="copy-product-link">Copy link</button></div><p id="product-share-status" role="status" aria-live="polite"></p></div></div></div><div class="detail-sections">${section('Traditional benefits',p.traditional_benefits)}${section('Extraction & craft',p.extraction_craft)}${section('Ingredients & more',p.ingredients_and_more)}</div>`;
 }
 
 $('#category-list').addEventListener('click',e=>{const b=e.target.closest('[data-category]');if(!b)return;state.category=b.dataset.category;renderCategories();renderProducts()});
-$('#product-grid').addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(!target)return;const card=target.closest('[data-id]'),p=byId(card?.dataset.id);if(!p)return;if(target.dataset.action==='detail'){if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();openModal(p)}if(target.dataset.action==='add')addToCart(p,state.selection[p.id]||0)});
+$('#product-grid').addEventListener('click',e=>{if(e.target.closest('[data-action="retry-catalog"]')) void loadCatalog()});
+$('#product-grid').addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(!target)return;const card=target.closest('[data-id]'),p=byId(card?.dataset.id);if(!p)return;if(target.dataset.action==='detail'){if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();history.pushState({},'',productUrl(p));renderRoute();window.scrollTo(0,0)}if(target.dataset.action==='add')addToCart(p,state.selection[p.id]||0)});
 $('#product-grid').addEventListener('change',e=>{if(e.target.dataset.action!=='variant')return;const p=byId(e.target.closest('[data-id]')?.dataset.id);if(!p)return;state.selection[p.id]=Number(e.target.value);const card=e.target.closest('.product-card'),v=selectedVariant(p);card.querySelector('.price').textContent=money(v.price);card.querySelector('.availability-label').textContent=availabilityLabel(v);card.querySelector('.add-button').disabled=v.orderable===false;card.querySelector('.add-button').setAttribute('aria-label',`Add ${p.name}, ${v.size}, to bag`)});
 $('#search-input').addEventListener('input',e=>{state.query=e.target.value.trim().toLowerCase();renderProducts()});
 $('#sort-select').addEventListener('change',e=>{state.sort=e.target.value;renderProducts()});
-$('#search-open').addEventListener('click',()=>{location.hash='shop';$('#search-input').focus()});
+$('#search-open').addEventListener('click',()=>{if(location.pathname!=='/'){location.href='/#shop';return}location.hash='shop';$('#search-input').focus()});
 $('#clear-filters').addEventListener('click',()=>{state.category='All products';state.query='';$('#search-input').value='';renderCategories();renderProducts()});
 $('#cart-open').addEventListener('click',openCart);$('#cart-close').addEventListener('click',closeCart);$('#drawer-overlay').addEventListener('click',closeCart);
 $('#cart-items').addEventListener('click',e=>{const b=e.target.closest('[data-qty]');if(!b)return;const key=b.closest('[data-key]').dataset.key;state.cart[key]=(state.cart[key]||0)+Number(b.dataset.qty);if(state.cart[key]<=0)delete state.cart[key];saveCart();renderCart()});
-$('#product-overlay').addEventListener('click',closeModal);$('#modal-close').addEventListener('click',closeModal);
-$('#modal-content').addEventListener('change',e=>{if(e.target.id==='modal-variant'&&state.modal){state.selection[state.modal]=Number(e.target.value);const v=selectedVariant(byId(state.modal));$('#modal-price').textContent=money(v.price);$('#modal-availability').textContent=availabilityLabel(v);$('#modal-add').disabled=v.orderable===false;renderProducts()}});
-$('#modal-content').addEventListener('click',async e=>{
-  if(e.target.id==='modal-add'&&state.modal){const p=byId(state.modal),i=state.selection[p.id]||0;if(p.variants[i]?.orderable===false)return;closeModal();addToCart(p,i)}
-  if(e.target.id==='copy-product-link'&&state.modal){
+$('#product-page').addEventListener('change',e=>{if(e.target.id==='detail-variant'&&state.detail){state.selection[state.detail]=Number(e.target.value);const v=selectedVariant(byId(state.detail));$('#detail-price').textContent=money(v.price);$('#detail-availability').textContent=availabilityLabel(v);$('#detail-add').disabled=v.orderable===false;renderProducts()}});
+$('#product-page').addEventListener('click',async e=>{
+  if(e.target.closest('[data-action="retry-catalog"]')) void loadCatalog();
+  if(e.target.id==='detail-add'&&state.detail){const p=byId(state.detail),i=state.selection[p.id]||0;if(p.variants[i]?.orderable===false)return;addToCart(p,i)}
+  if(e.target.id==='copy-product-link'&&state.detail){
     const input=$('#product-share-url'),status=$('#product-share-status');
     try{await navigator.clipboard.writeText(input.value);status.textContent='Link copied. Paste it into the WhatsApp catalog or a chat.'}
     catch{input.focus();input.select();status.textContent='Select and copy this link to use it in WhatsApp.'}
   }
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeCart()}});
-window.addEventListener('popstate',syncProductFromUrl);
-window.MADIKAR_STORE={cartEntries,closeCart,clearCart(){state.cart={};saveCart();renderCart()},money};
-renderCategories();renderProducts();renderCart();
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCart()});
+window.addEventListener('popstate',renderRoute);
+window.MADIKAR_STORE={cartEntries,closeCart,consumeCart(lines){for(const line of lines||[]){const key=line.id+":"+line.variant;const remaining=(state.cart[key]||0)-line.quantity;if(remaining>0)state.cart[key]=remaining;else delete state.cart[key]}saveCart();renderCart()},clearCart(){state.cart={};saveCart();renderCart()},money};
+renderCategories();renderProducts();renderCart();renderRoute();
+async function requestCatalog(){
+  // Only retry the read-only catalog request; never replay checkout operations.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await fetch('/api/catalog',{
+        headers:{Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(15000)
+      });
+      if (response.ok) return await response.json();
+      const error = new Error('Catalog unavailable');
+      error.retryable = [408,429,500,502,503,504].includes(response.status);
+      throw error;
+    } catch (error) {
+      const retryable = error.retryable || ['TypeError','AbortError','TimeoutError'].includes(error.name);
+      if (!retryable || attempt === 2) throw error;
+      await new Promise(resolve => setTimeout(resolve,1000 * (attempt + 1)));
+    }
+  }
+}
 async function loadCatalog(){
+  if (catalogLoading) return;
+  catalogLoading = true;
+  catalogState = 'loading';
+  renderProducts();
   try {
-    const response = await fetch('/api/catalog',{headers:{Accept:'application/json'},cache:'no-store'});
-    if (!response.ok) throw new Error('Catalog unavailable');
-    const data = await response.json();
+    const data = await requestCatalog();
     if (!Array.isArray(data.products) || !data.products.length) throw new Error('Catalog unavailable');
     const next = data.products.map(p => ({...p,imageAlt:p.image_alt || '',variants:p.variants}));
-    if (next.some(p => !/^p[0-9]+$/.test(p.id) || !Array.isArray(p.variants) || !p.variants.length)) throw new Error('Invalid catalog');
+    if (next.some(p => !/^p[0-9]+$/.test(p.id) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p.slug) || !Array.isArray(p.variants) || !p.variants.length)) throw new Error('Invalid catalog');
     products.splice(0,products.length,...next);
     catalogState = 'ready';
     if (!categories().includes(state.category)) state.category = 'All products';
   } catch {
     catalogState = 'error';
+  } finally {
+    catalogLoading = false;
   }
-  renderCategories();renderProducts();renderCart();syncProductFromUrl();
+  renderCategories();renderProducts();renderCart();renderRoute();
 }
 loadCatalog();
