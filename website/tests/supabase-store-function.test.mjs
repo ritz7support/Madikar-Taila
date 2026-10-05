@@ -13,6 +13,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     .replace(/const PUBLIC_KEYS = \[[\s\S]*?\];/,`const PUBLIC_KEYS = [${JSON.stringify(publicJwk)}];`)
     .replace(/const ADMIN_LINK_HASH = '[a-f0-9]{64}';/,`const ADMIN_LINK_HASH = '${createHash('sha256').update(adminToken).digest('hex')}';`);
   let handler;
+  let variant={id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:5,availability_status:'available',shipping_weight_grams:null};
   const databaseCalls = [];
   const sandbox = {
     createCheckoutService:()=>({}),
@@ -30,7 +31,11 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
       }
       if (String(url).includes('/Product?') && String(url).includes('id=eq.1')) return Response.json([{id:1,store_id:'p1',catalog_id:'1515875913870520'}]);
       if (String(url).includes('/Product?')) return Response.json([{id:1,store_id:'p1',slug:'groundnut-oil',name:'Groundnut Oil',category:'Oils',website_description:'Groundnut oil',images:[{url:'assets/groundnut-oil.jpg',alt:'Groundnut Oil product image',kind:'product_photo'}]}]);
-      if (String(url).includes('/ProductVariant?')) return Response.json([{product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:5,availability_status:'available'}]);
+      if (String(url).includes('/ProductVariant')) {
+        if (options.method === 'PATCH') variant={...variant,...JSON.parse(options.body)};
+        if (options.method === 'POST') return Response.json([{id:11,shipping_weight_grams:null,...JSON.parse(options.body)}]);
+        return Response.json([variant]);
+      }
       if (String(url).includes('store_create_order')) return Response.json({reference:'STORE-TEST123',subtotalPaise:35000});
       if (String(url).includes('store_record_payment')) return Response.json({reference:'STORE-TEST123',status:'paid'});
       throw new Error('Unexpected database call');
@@ -63,4 +68,42 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     name:'Groundnut Oil',category:'Oils',description:'Store description',
     images:[{url:'assets/groundnut-oil.jpg',alt:'Groundnut Oil',kind:'product_photo'}],active:false});
   assert.equal((await saved.json()).product.store_name,'Groundnut Oil');
+
+  // Weight writes round-trip through authenticated admin operations, without
+  // changing existing prices/stock or the public catalog response contract.
+  const pack={action:'admin_save_variant',adminToken,id:10,size:'500 ml',price:175,inventoryQuantity:5,availabilityStatus:'available'};
+  const before={...variant};
+  const weighted=await send({...pack,shippingWeightGrams:'550'});
+  assert.equal(weighted.status,200);
+  assert.deepEqual((await weighted.json()).variant,{...before,shipping_weight_grams:550});
+  const adminCatalog=await send({action:'admin_catalog',adminToken});
+  assert.equal((await adminCatalog.json()).products[0].variants[0].shipping_weight_grams,550);
+  assert.ok(databaseCalls.some(c=>c.url.includes('select=id,product_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams')));
+  const legacy=await send(pack);
+  assert.equal((await legacy.json()).variant.shipping_weight_grams,550,'old admin clients must preserve saved weights');
+  const publicCatalog=await send({action:'catalog'});
+  const publicVariant=(await publicCatalog.json()).products[0].variants[0];
+  assert.equal(publicVariant.price,175);
+  assert.equal(publicVariant.orderable,true);
+  assert.equal(Object.hasOwn(publicVariant,'shipping_weight_grams'),false);
+  for (const invalid of [0,-1,0.5,'500.5','abc',true,[],{},2147483648]) {
+    const calls=databaseCalls.length;
+    const rejected=await send({...pack,shippingWeightGrams:invalid});
+    assert.equal(rejected.status,400,JSON.stringify(invalid));
+    assert.match((await rejected.json()).error,/whole number of grams/);
+    assert.equal(databaseCalls.length,calls,'invalid weights must not reach the database');
+  }
+  for (const blank of ['',null,'   ']) {
+    const cleared=await send({...pack,shippingWeightGrams:blank});
+    assert.equal((await cleared.json()).variant.shipping_weight_grams,null);
+  }
+  const {id:ignoredId,...newPack}=pack;
+  for (const weight of [250,'']) {
+    const added=await send({...newPack,productId:1,shippingWeightGrams:weight});
+    assert.equal(added.status,200);
+    assert.equal((await added.json()).variant.shipping_weight_grams,weight === '' ? null : weight);
+  }
+  const calls=databaseCalls.length;
+  assert.equal((await send({...pack,adminToken:'invalid',shippingWeightGrams:600})).status,403);
+  assert.equal(databaseCalls.length,calls);
 });

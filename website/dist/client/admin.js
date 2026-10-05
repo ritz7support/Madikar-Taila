@@ -95,6 +95,7 @@ function renderEditor(){
     <td><input data-size value="${escapeHtml(v.size)}" maxlength="40" aria-label="Pack size"></td>
     <td><input data-price type="number" min="1" max="100000" step=".01" value="${escapeHtml(v.price)}" aria-label="Price in rupees"></td>
     <td><input data-stock type="number" min="0" step="1" value="${v.inventory_quantity ?? ''}" placeholder="Unknown" aria-label="Units in stock"></td>
+    <td><input data-shipping-weight type="number" min="1" max="2147483647" step="1" value="${escapeHtml(v.shipping_weight_grams ?? '')}" placeholder="Unknown" aria-label="Shipping weight in grams"></td>
     <td><select data-availability aria-label="Availability"><option value="unverified" ${v.availability_status==='unverified'?'selected':''}>Confirm first</option><option value="available" ${v.availability_status==='available'?'selected':''}>Available</option><option value="unavailable" ${v.availability_status==='unavailable'?'selected':''}>Unavailable</option></select></td>
     <td><button type="button" data-save-variant="${v.id}">Save</button></td>
   </tr>`).join('');
@@ -108,8 +109,9 @@ function renderEditor(){
     <div id="image-list">${images || '<p class="empty">No images yet.</p>'}</div>
     <div class="image-actions"><button type="button" id="add-image-url">Add image URL</button><input id="image-upload" class="upload-input" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose product photo"><button type="button" id="upload-image" ${p.id?'':'disabled'}>Upload photo</button></div>
     <h3>Pack sizes & prices</h3><p class="help">Leave stock blank when the count is unknown. “Unavailable” prevents new orders for that pack.</p>
-    <table class="pack-table"><thead><tr><th>Size</th><th>Price</th><th>Stock</th><th>Availability</th><th></th></tr></thead><tbody>${packs || '<tr><td colspan="5">No pack sizes yet.</td></tr>'}</tbody></table>
-    <div class="image-actions"><input id="new-size" placeholder="Pack size e.g. 500 ml" aria-label="New pack size"><input id="new-price" type="number" min="1" step=".01" placeholder="Price ₹" aria-label="New pack price"><input id="new-stock" type="number" min="0" step="1" placeholder="Stock optional" aria-label="New pack stock"><select id="new-availability" aria-label="New pack availability"><option value="unverified">Confirm first</option><option value="available">Available</option><option value="unavailable">Unavailable</option></select><button type="button" id="add-pack" ${p.id?'':'disabled'}>Add pack</button></div>`;
+    <p class="help">Shipping weight is for one pack in whole grams, including its bottle, jar or wrapper. Exclude the outer delivery box. Leave blank if unknown. Saving weights does not change shipping charges yet.</p>
+    <div class="pack-table-scroll"><table class="pack-table"><thead><tr><th>Size</th><th>Price</th><th>Stock</th><th>Shipping weight (g)</th><th>Availability</th><th></th></tr></thead><tbody>${packs || '<tr><td colspan="6">No pack sizes yet.</td></tr>'}</tbody></table></div>
+    <div class="image-actions"><input id="new-size" placeholder="Pack size e.g. 500 ml" aria-label="New pack size"><input id="new-price" type="number" min="1" step=".01" placeholder="Price ₹" aria-label="New pack price"><input id="new-stock" type="number" min="0" step="1" placeholder="Stock optional" aria-label="New pack stock"><input id="new-shipping-weight" type="number" min="1" max="2147483647" step="1" placeholder="Shipping weight (g), optional" aria-label="New pack shipping weight in grams"><select id="new-availability" aria-label="New pack availability"><option value="unverified">Confirm first</option><option value="available">Available</option><option value="unavailable">Unavailable</option></select><button type="button" id="add-pack" ${p.id?'':'disabled'}>Add pack</button></div>`;
 }
 async function saveProduct(){
   const values=editorValues();
@@ -122,12 +124,15 @@ async function saveProduct(){
 }
 async function saveVariant(row,adding=false){
   if(!state.editing?.id)return setStatus('Create the product draft first.','error');
+  const weightInput=adding?$('#new-shipping-weight'):row.querySelector('[data-shipping-weight]');
+  if(!weightInput.reportValidity())return;
   const pending=editorValues();
   const fields=adding?{size:$('#new-size').value,price:$('#new-price').value,
       inventoryQuantity:$('#new-stock').value,availabilityStatus:$('#new-availability').value,productId:state.editing.id}
     :{size:row.querySelector('[data-size]').value,price:row.querySelector('[data-price]').value,
       inventoryQuantity:row.querySelector('[data-stock]').value,availabilityStatus:row.querySelector('[data-availability]').value,
       id:row.dataset.variantId};
+  fields.shippingWeightGrams=weightInput.value;
   try{
     const productId=state.editing.id;
     await adminApi('admin_save_variant',fields);

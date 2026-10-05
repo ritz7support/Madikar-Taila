@@ -105,14 +105,25 @@ function variantFields(body) {
     Math.round(price * 100) !== price * 100 ||
     (inventory !== null && (!Number.isInteger(inventory) || inventory < 0 || inventory > 1000000)) ||
     !['unverified','available','unavailable'].includes(status)) throw new Error('Invalid pack details');
-  return {size,price,inventory_quantity:inventory,availability_status:status};
+  const fields = {size,price,inventory_quantity:inventory,availability_status:status};
+  // Old admin tabs omit this field: preserve a previously saved weight on PATCH.
+  if (Object.prototype.hasOwnProperty.call(body,'shippingWeightGrams')) {
+    const raw = body.shippingWeightGrams;
+    const weight = raw === null || (typeof raw === 'string' && raw.trim() === '') ? null : Number(raw);
+    if (weight !== null && ((!['string','number'].includes(typeof raw)) ||
+      !Number.isInteger(weight) || weight <= 0 || weight > 2147483647)) {
+      throw Object.assign(new Error('Shipping weight must be a positive whole number of grams, or blank.'),{status:400});
+    }
+    fields.shipping_weight_grams = weight;
+  }
+  return fields;
 }
 async function adminAction(body) {
   if (body.action === 'admin_me') return {label:'Team access'};
   if (body.action === 'admin_catalog') {
     const [products,variants] = await Promise.all([
       database('/rest/v1/Product?select=id,store_id,store_name,name,category,short_description,images,store_sort_order,store_active,catalog_id&store_id=not.is.null&order=store_sort_order.asc'),
-      database('/rest/v1/ProductVariant?select=id,product_id,position,size,price,inventory_quantity,availability_status&order=position.asc,id.asc')
+      database('/rest/v1/ProductVariant?select=id,product_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams&order=position.asc,id.asc')
     ]);
     const byId = new Map();
     for (const variant of variants.payload || []) {

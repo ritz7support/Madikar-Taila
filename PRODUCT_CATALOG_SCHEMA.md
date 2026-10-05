@@ -1,5 +1,13 @@
 # Product catalog schema — current checkpoint 1 October 2026
 
+## Shipping weights — 5 October 2026
+
+The additive migration `20261005172819_add_variant_shipping_weight_grams.sql` adds nullable integer `ProductVariant.shipping_weight_grams`, constrained to positive values when set. It means the weight of one sellable pack in whole grams, including its bottle/jar/wrapper, excluding outer shipping packaging. No values were inferred from volume or backfilled; all 90 variants were NULL at publication.
+
+The existing admin variant editor and Add pack form now accept Shipping weight (g). `admin_catalog` returns the column; `admin_save_variant` accepts optional `shippingWeightGrams`. Blank/null explicitly clears it. An omitted field preserves an existing value, so older admin clients remain compatible. Invalid values return HTTP 400 without a database write. Existing RLS/grants are unchanged.
+
+This is metadata entry only: website and WhatsApp shipping remain zero, and public catalog, checkout, payments, bot handlers and Meta sync are unchanged. Courier rules and the runtime Meta retailer-ID-to-variant mapping remain a later phase. Historical reconciliation mappings are evidence to verify, not an active database relationship. Latest publication: Sites version 25 and madikar-store v11. The older checkpoints below remain historical.
+
 **Current:** 59 visible website products, 90 available variants, 17 hidden Meta lookup rows. ProductVariant.product_name is synchronized from its parent; inventory quantities are NULL/untracked. See the final "Variant names and stock" section and PROJECT_HANDOFF.md. The dated September reconciliation sections below are history; statements that eight products are visible or product pages are pending are superseded.
 
 **Current website state after the later 30 September continuation:** All 59 canonical website groups are visible across the nine categories below; their 90 variants and 59 bucket image links are served through `madikar-store` v5. The 17 additional Meta lookup rows remain hidden. Sites version 15 serves `/products/<slug>` pages and browser redirects for old `/?product=<store_id>` links. The three optional detail fields remain empty and are hidden on product pages by owner choice. The counts and pending work described below are historical snapshots from before this continuation. See `WEBSITE_HANDOFF.md`.

@@ -57,6 +57,8 @@ textarea{min-height:6rem;resize:vertical}
 .image-row button{align-self:end}
 .image-actions,.form-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.8rem 0}
 .upload-input{max-width:320px}
+.product-editor{min-width:0}
+.pack-table-scroll{max-width:100%;overflow-x:auto}
 .pack-table{width:100%;border-collapse:collapse;margin-top:.8rem}
 .pack-table th{text-align:left;color:#5d6f5e;font-size:.8rem}
 .pack-table td,.pack-table th{padding:.45rem .25rem;border-bottom:1px solid #e4e9e1}

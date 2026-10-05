@@ -1,6 +1,6 @@
 # Madikar Taila — project analysis starting point
 
-Updated 1 October 2026. This is the consolidated bot and website baseline for main. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve any newer work. GitHub main is the baseline for future branches. The older codex/website and cursor/production-hardening branches remain as history.
+Updated 5 October 2026. The consolidated main baseline has a follow-up on codex/variant-shipping-weights for optional admin shipping weights. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve any newer work. The older codex/website and cursor/production-hardening branches remain as history.
 
 ## Read first
 
@@ -13,11 +13,12 @@ Updated 1 October 2026. This is the consolidated bot and website baseline for ma
 
 ## Verified checkpoint
 
-- Site appgprj_6ab742ddf3e48191911b4bb531bb0ca8, public at https://madikartaila.com, version 24. Sites commit 311b7409b42c5e9370a9b01ccbf7e02658111b11; deployment appgdep_6abe3d502ff88191aa71dddc752f570a succeeded. GitHub and Sites commit IDs are separate.
-- website/dist/client and the Worker source/build match the version-24 publishing mirror. GitHub documentation/tests may be newer than the published Site. No new deployment is required for this consolidation.
-- Supabase faoomjgkofqrdajaftjd (ap-south-1): madikar-store v10, whatsapp-webhook v94, whatsapp-flow v50, razorpay-webhook v33, sync-meta-catalog v11, retry-order-handoffs v6. All six deployed function sources and shared handoff code match local files after line-ending normalization. Counters can drift without source changes.
+- Site appgprj_6ab742ddf3e48191911b4bb531bb0ca8, public at https://madikartaila.com, version 25. Sites commit ca3c17acc2da0804e25dc6d6d4eff4ca6b111edd; deployment appgdep_6ac3df18d3608191a6a5308d18340664 succeeded. GitHub and Sites commit IDs are separate.
+- website/dist/client and the Worker source/build match the version-25 publishing mirror. GitHub documentation may be newer than the published Site.
+- Supabase faoomjgkofqrdajaftjd (ap-south-1): madikar-store v11 (5 October, source parity verified), whatsapp-webhook v94, whatsapp-flow v50, razorpay-webhook v33, sync-meta-catalog v11, retry-order-handoffs v6 (bot counters last inspected 1 October). Bot functions and shared code were not changed or deployed for weights. Counters can drift without source changes.
 - Preserve the current website backend's two public signing keys (commented as Sites and Vercel). Vercel deployment/source was not independently reviewed in this consolidation; do not remove the second key or assume it is unused.
 - 59 website products / 90 variants across nine categories; all variants made available on 1 October. Inventory counts are NULL (untracked), not invented quantities. ProductVariant.product_name mirrors the parent display name. Seventeen additional Meta lookup rows stay hidden.
+- ProductVariant.shipping_weight_grams is now nullable positive integer metadata, editable in the existing admin pack table and Add pack form. All 90 weights remain NULL for the team to enter. No outer delivery packaging allowance. Migration 20261005172819_add_variant_shipping_weight_grams is applied; do not replay it.
 - Checkout: UPI-only display, zero shipping, mode selected by the shared RAZORPAY_MODE secret. All delivery fields mandatory except email and landmark. Orders/items/payment/address are recorded atomically after verified capture. Website address source is website_checkout and does not replace saved bot addresses.
 - Both test and live payments trigger n8n and the approved website_payment_confirmation WhatsApp template (en; no buttons/placeholders), plus the on-screen confirmation. The delivery header is hidden in the success popup; close and Continue shopping return home.
 - The owner's earlier bot Razorpay help-line text is included. Consolidation does not deploy functions, change database state/secrets, send messages or process payments.
@@ -30,6 +31,9 @@ Updated 1 October 2026. This is the consolidated bot and website baseline for ma
 - Run npm test from website for frontend, Worker, auth/catalog and website checkout/confirmation tests. Run npm run build there to regenerate the Worker. Tests use mocks and do not make real charges or messages.
 
 ## Analysis priorities and remaining uncertainty
+
+- The wider project audit is deferred at the owner's request. Current shipping work only adds weight entry. Courier rates/rounding will be supplied later; neither checkout uses weights yet. Before connecting the bot, verify catalog/retailer-ID-to-variant mappings (the historical 69-item mapping is under outputs/catalog-reconciliation-20260930/) rather than guessing from names or sizes. Preserve the original oil variants and hidden Meta lookup rows. Compute shipping before creating a payment link once this later phase is approved and specified.
+- Weight verification: 36 automated tests passed, including authenticated save/clear/add, invalid input rejection, old admin clients preserving saved weights, and unchanged public catalog/checkout behavior. Local browser tests used mocked APIs and passed save/reload/clear/add, orders-tab access and 390px layout. Database constraint tests used a temporary table and rolled back. Existing Product and ProductVariant data hashes (excluding the new column), RLS and public grants were unchanged. No real order, payment or customer message was generated; authenticated live admin save was not exercised with a real staff code.
 
 - Diagnose the intermittent catalog PGRST303 authentication error; bounded retries mitigate it but do not prove it fixed.
 - Verify the separate website Razorpay webhook registration, live capture, recovery after browser closure, trusted edge client-IP header and downstream n8n idempotency. A timed-out n8n request may have been accepted; deduplicate by order_id. User reported successful test payment; no live payment was made during consolidation.
