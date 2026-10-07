@@ -1,8 +1,8 @@
 # Madikar Taila website source
 
-Canonical development source on main. Published Site: appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com, version 24. Sites source commit: 311b7409b42c5e9370a9b01ccbf7e02658111b11. The Sites repository is a publishing mirror; GitHub main is the consolidated development baseline. Create new work branches from main, reconcile the existing Site before editing, and preserve its project ID and audience.
+Canonical development source. Published Site: appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com, version 28. Sites source commit: 34dbdfa6001ef3f07c9828429ea5e4d56d1507f0. The Sites repository is a publishing mirror; reconcile the existing Site before editing, and preserve its project ID and audience. The latest admin orders work is on codex/admin-orders-management; review branch history before starting new work from main.
 
-Read ../PROJECT_HANDOFF.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. Checkout is enabled with zero shipping and UPI-only choices; both test/live captured payments send n8n and the approved WhatsApp template. madikar-store v10 is the current website backend. See the handoff for remaining verification gaps.
+Read ../PROJECT_HANDOFF.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. Checkout is enabled with zero shipping and UPI-only choices; both test/live captured payments send n8n and the approved WhatsApp template. madikar-store v12 is the current website backend. See the handoff for remaining verification gaps.
 
 ## Layout and checks
 

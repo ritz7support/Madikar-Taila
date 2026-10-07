@@ -14,11 +14,15 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     .replace(/const ADMIN_LINK_HASH = '[a-f0-9]{64}';/,`const ADMIN_LINK_HASH = '${createHash('sha256').update(adminToken).digest('hex')}';`);
   let handler;
   let variant={id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:5,availability_status:'available',shipping_weight_grams:null};
+  let rejectCatalogReads=0;
+  const orders=Array.from({length:25},(_,index)=>({id:index+1,reference_id:'ORDER-'+(index+1),source:index<8?'store':'whatsapp',
+    status:index===0?'pending_payment':'processing',fulfillment_status:'processing',created_at:'2026-10-07T00:00:00Z',
+    total:175,subtotal:175,shipping:0,profile_id:null,address_id:null}));
   const databaseCalls = [];
   const sandbox = {
     createCheckoutService:()=>({}),
     Deno:{env:{get:key => ({SUPABASE_URL:'https://supabase.example',SUPABASE_SECRET_KEYS:JSON.stringify({default:'sb_secret_test'})})[key]},serve:fn => {handler=fn}},
-    crypto:webcrypto, TextEncoder, Response, Request, URL, atob, AbortSignal, Date,
+    crypto:webcrypto, TextEncoder, Response, Request, URL, atob, AbortSignal, Date, setTimeout,
     console:{error:() => {}},
     fetch:async (url,options) => {
       databaseCalls.push({url:String(url),options});
@@ -32,10 +36,24 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
       if (String(url).includes('/Product?') && String(url).includes('id=eq.1')) return Response.json([{id:1,store_id:'p1',catalog_id:'1515875913870520'}]);
       if (String(url).includes('/Product?')) return Response.json([{id:1,store_id:'p1',slug:'groundnut-oil',name:'Groundnut Oil',category:'Oils',website_description:'Groundnut oil',images:[{url:'assets/groundnut-oil.jpg',alt:'Groundnut Oil product image',kind:'product_photo'}]}]);
       if (String(url).includes('/ProductVariant')) {
+        if (!options.method && rejectCatalogReads-->0) return Response.json({code:'PGRST303',message:'JWT claims validation failed'},{status:401});
         if (options.method === 'PATCH') variant={...variant,...JSON.parse(options.body)};
         if (options.method === 'POST') return Response.json([{id:11,shipping_weight_grams:null,...JSON.parse(options.body)}]);
         return Response.json([variant]);
       }
+      if (String(url).includes('/rest/v1/orders?')) {
+        const query=new URL(url).searchParams;
+        if (options.method === 'PATCH') {
+          const order=orders.find(o=>String(o.id)===query.get('id')?.slice(3));
+          if (!order || order.status==='pending_payment' || order.fulfillment_status!==query.get('fulfillment_status')?.slice(3)) return Response.json([]);
+          order.fulfillment_status=JSON.parse(options.body).fulfillment_status;
+          return Response.json([order]);
+        }
+        const source=query.get('source')?.slice(3);
+        return Response.json(orders.filter(o=>!source||o.source===source).toSorted((a,b)=>b.id-a.id)
+          .slice(Number(query.get('offset')),Number(query.get('offset'))+Number(query.get('limit'))));
+      }
+      if (String(url).includes('/rest/v1/order_items?') || String(url).includes('/rest/v1/payments?')) return Response.json([]);
       if (String(url).includes('store_create_order')) return Response.json({reference:'STORE-TEST123',subtotalPaise:35000});
       if (String(url).includes('store_record_payment')) return Response.json({reference:'STORE-TEST123',status:'paid'});
       throw new Error('Unexpected database call');
@@ -79,6 +97,32 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   const adminCatalog=await send({action:'admin_catalog',adminToken});
   assert.equal((await adminCatalog.json()).products[0].variants[0].shipping_weight_grams,550);
   assert.ok(databaseCalls.some(c=>c.url.includes('select=id,product_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams')));
+  rejectCatalogReads=1;
+  const retried=await send({action:'admin_catalog',adminToken});
+  assert.equal(retried.status,200,'transient PGRST303 read should recover');
+  rejectCatalogReads=3;
+  const unavailable=await send({action:'admin_catalog',adminToken});
+  assert.equal(unavailable.status,503,'persistent read failure is not an invalid team code');
+  assert.match((await unavailable.json()).error,/try again/i);
+  const firstPage=await send({action:'admin_orders',adminToken,page:0,source:'all'});
+  const firstResult=await firstPage.json();
+  assert.equal(firstResult.orders.length,20);
+  assert.equal(firstResult.hasMore,true);
+  assert.equal(firstResult.orders[0].id,25);
+  const secondResult=await (await send({action:'admin_orders',adminToken,page:1,source:'all'})).json();
+  assert.equal(secondResult.orders.length,5);
+  assert.equal(secondResult.hasMore,false);
+  const websiteOrders=await (await send({action:'admin_orders',adminToken,page:0,source:'store'})).json();
+  assert.equal(websiteOrders.orders.length,8);
+  assert.ok(websiteOrders.orders.every(o=>o.source==='store'));
+  const changed=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing'});
+  assert.equal(changed.status,200);
+  assert.equal((await changed.json()).fulfillmentStatus,'shipped');
+  assert.equal(orders[1].status,'processing','payment and bot status must remain unchanged');
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:1,status:'shipped',previousStatus:'processing'})).status,409);
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'completed',previousStatus:'processing'})).status,409);
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'unknown',previousStatus:'shipped'})).status,400);
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken:'invalid',id:2,status:'completed',previousStatus:'shipped'})).status,403);
   const legacy=await send(pack);
   assert.equal((await legacy.json()).variant.shipping_weight_grams,550,'old admin clients must preserve saved weights');
   const publicCatalog=await send({action:'catalog'});

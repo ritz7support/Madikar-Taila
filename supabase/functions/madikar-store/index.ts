@@ -45,13 +45,22 @@ async function database(path, options = {}) {
     ...(options.headers || {})
   };
   if (!serviceKey.startsWith('sb_secret_')) headers.Authorization = 'Bearer ' + serviceKey;
-  const response = await fetch(projectUrl + path, {...options, headers, signal:AbortSignal.timeout(12000)});
-  const payload = await response.json().catch(() => null);
+  // PGRST303 has intermittently rejected otherwise valid catalog reads. Retry
+  // only this read-only failure; never replay payment or admin writes.
+  let response, payload;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    response = await fetch(projectUrl + path, {...options, headers, signal:AbortSignal.timeout(12000)});
+    payload = await response.json().catch(() => null);
+    if (response.ok || (options.method && options.method !== 'GET') || payload?.code !== 'PGRST303' || attempt === 2) break;
+    await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 150 : 350));
+  }
   if (!response.ok) {
     console.error('Store database operation failed', response.status, payload?.code || '');
     if (payload?.message === 'Product prices changed') return {error:'Product prices changed', status:409};
-    const error = new Error('Store database operation failed');
-    error.status = response.status;
+    const transient = payload?.code === 'PGRST303';
+    const error = new Error(transient ? 'The dashboard could not load right now. Please try again.' : 'Store database operation failed');
+    error.status = transient ? 503 : response.status;
+    error.transientDatabase = transient;
     throw error;
   }
   return {payload, status:200};
@@ -137,9 +146,13 @@ async function adminAction(body) {
   if (body.action === 'admin_orders') {
     const page = Number(body.page);
     if (!Number.isInteger(page) || page < 0 || page > 1000) throw new Error('Invalid page');
-    const orders = await database('/rest/v1/orders?select=id,reference_id,source,status,created_at,total,subtotal,shipping,currency,whatsapp_user_id,profile_id,address_id&order=created_at.desc&limit=50&offset=' + (page*50));
-    const rows = orders.payload || [];
-    if (!rows.length) return {orders:[],hasMore:false};
+    const source = body.source || 'all';
+    if (!['all','store','whatsapp'].includes(source)) throw Object.assign(new Error('Invalid order source'),{status:400});
+    const filter = source === 'all' ? '' : '&source=eq.' + source;
+    const orders = await database('/rest/v1/orders?select=id,reference_id,source,status,fulfillment_status,created_at,total,subtotal,shipping,currency,whatsapp_user_id,profile_id,address_id' + filter + '&order=created_at.desc,id.desc&limit=21&offset=' + (page*20));
+    const found = orders.payload || [];
+    const rows = found.slice(0,20);
+    if (!rows.length) return {orders:[],hasMore:false,page};
     const ids = rows.map(row => row.id).join(',');
     const profileIds = [...new Set(rows.map(row => row.profile_id).filter(Boolean))];
     const addressIds = [...new Set(rows.map(row => row.address_id).filter(Boolean))];
@@ -158,7 +171,22 @@ async function adminAction(body) {
     return {orders:rows.map(o => ({
       ...o,items:itemMap.get(o.id) || [],payments:paymentMap.get(o.id) || [],
       profile:profileMap.get(o.profile_id) || null,address:addressMap.get(o.address_id) || null
-    })),hasMore:rows.length === 50};
+    })),hasMore:found.length > 20,page};
+  }
+  if (body.action === 'admin_update_fulfillment') {
+    const id = adminId(body.id);
+    const stage = body.status;
+    const previous = body.previousStatus;
+    const stages = ['processing','shipped','completed','cancelled'];
+    if (!id || !stages.includes(stage) || !stages.includes(previous)) {
+      throw Object.assign(new Error('Invalid order status'),{status:400});
+    }
+    const response = await database('/rest/v1/orders?id=eq.' + id + '&status=neq.pending_payment&fulfillment_status=eq.' + previous,{
+      method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({fulfillment_status:stage})
+    });
+    const order = response.payload?.[0];
+    if (!order) throw Object.assign(new Error('Order changed or is awaiting payment. Refresh orders and try again.'),{status:409});
+    return {id:order.id,fulfillmentStatus:order.fulfillment_status};
   }
   if (body.action === 'admin_save_product') {
     const product = await storeProduct(body.id);
@@ -302,6 +330,6 @@ Deno.serve(async (request) => {
     return result({error:'Unknown operation'},404);
   } catch (error) {
     console.error('Madikar store operation failed', error);
-    return result({error:error.status && error.status < 500 ? error.message : 'Store service is temporarily unavailable'},error.status || 502);
+    return result({error:error.transientDatabase || error.status && error.status < 500 ? error.message : 'Store service is temporarily unavailable'},error.status || 502);
   }
 });

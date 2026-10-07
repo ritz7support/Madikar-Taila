@@ -16,7 +16,7 @@ async function adminApi(action,body={}){
     body:JSON.stringify({action,...body})
   });
   const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(data.error || 'The dashboard request failed.');
+  if(!response.ok) throw Object.assign(new Error(data.error || 'The dashboard request failed.'),{status:response.status});
   return data;
 }
 function showDashboard(label){
@@ -167,30 +167,34 @@ function orderAddress(order){
   return [a.line1 || a.address_line_1,a.line2 || a.address_line_2,a.city,a.state,a.postalCode || a.pincode].filter(Boolean).join(', ');
 }
 function renderOrders(){
-  const source=$('#order-source').value;
-  const list=state.orders.filter(o=>source==='all'||o.source===source);
-  $('#orders-list').innerHTML=list.length?list.map(o=>{
+  $('#orders-list').innerHTML=state.orders.length?state.orders.map(o=>{
     const customer=o.customer_name || o.profile?.name || o.whatsapp_user_id || 'Customer';
     const phone=o.customer_phone || o.address?.phone || o.whatsapp_user_id || '';
     const date=new Date(o.created_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});
     const items=(o.items || []).map(i=>`<li>${escapeHtml(i.product_name || i.product_retailer_id)}${i.variant_size?' · '+escapeHtml(i.variant_size):''} × ${i.quantity} — ${money(i.unit_price*i.quantity)}</li>`).join('');
     const payments=(o.payments || []).map(p=>`${escapeHtml(p.status)}${p.provider_payment_id?' · '+escapeHtml(p.provider_payment_id):''}`).join(', ');
-    return `<details class="order-card"><summary><span><strong>${escapeHtml(o.reference_id)}</strong><small>${escapeHtml(date)}</small></span><span>${escapeHtml(customer)}</span><span><span class="pill">${o.source==='store'?'Website':'WhatsApp'}</span></span><span>${escapeHtml(o.status)}</span><strong>${money(o.total)}</strong></summary>
+    const paid=o.status!=='pending_payment';
+    const stage=['processing','shipped','completed','cancelled'].includes(o.fulfillment_status)?o.fulfillment_status:'processing';
+    const statusControl=`<label class="visually-hidden" for="order-stage-${o.id}">Order status for ${escapeHtml(o.reference_id)}</label><select id="order-stage-${o.id}" data-order-stage="${o.id}" aria-label="Order status for ${escapeHtml(o.reference_id)}" ${paid?'':'disabled'}>${[['processing','Processing'],['shipped','Shipped'],['completed','Completed'],['cancelled','Cancelled']].map(([value,label])=>`<option value="${value}" ${stage===value?'selected':''}>${label}</option>`).join('')}</select>${paid?'':'<small class="pending-payment">Awaiting payment</small>'}`;
+    return `<details class="order-card"><summary><span><strong>${escapeHtml(o.reference_id)}</strong><small>${escapeHtml(date)}</small></span><span>${escapeHtml(customer)}</span><span><span class="pill ${o.source==='store'?'pill--store':'pill--whatsapp'}">${o.source==='store'?'Website':'WhatsApp'}</span></span><span class="order-stage">${statusControl}</span><strong>${money(o.total)}</strong></summary>
       <div class="order-detail"><div><h3>Items</h3><ul>${items || '<li>No line items</li>'}</ul><p>Subtotal ${money(o.subtotal)} · Shipping ${money(o.shipping)}</p></div>
-      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>${payments?'Payment: '+payments:''}</p></div></div></details>`;
+      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>Payment: ${escapeHtml(o.status).replaceAll('_',' ')}${payments?' · '+payments:''}</p></div></div></details>`;
   }).join(''):'<p class="panel empty">No orders in this view.</p>';
-  $('#load-more-orders').hidden=!state.hasMore;
+  $('#orders-page-label').textContent=`Page ${state.ordersPage+1} · up to 20 orders`;
+  $('#previous-orders').disabled=state.orderLoading||state.ordersPage===0;
+  $('#next-orders').disabled=state.orderLoading||!state.hasMore;
+  $('#order-source').disabled=state.orderLoading;
 }
-async function loadOrders(reset=false){
+async function loadOrders(page=0){
   if(state.orderLoading)return;
   state.orderLoading=true;
-  if(reset){state.orders=[];state.ordersPage=0}
+  renderOrders();
   try{
-    const data=await adminApi('admin_orders',{page:state.ordersPage});
-    state.orders.push(...(data.orders || []));state.ordersPage+=1;state.hasMore=data.hasMore;
-    renderOrders();setStatus(`${state.orders.length} orders loaded.`,'success');
+    const data=await adminApi('admin_orders',{page,source:$('#order-source').value});
+    state.orders=data.orders || [];state.ordersPage=page;state.hasMore=Boolean(data.hasMore);
+    setStatus(`${state.orders.length} orders on page ${page+1}.`,'success');
   }catch(error){setStatus(error.message,'error')}
-  finally{state.orderLoading=false}
+  finally{state.orderLoading=false;renderOrders()}
 }
 
 $('#access-form').addEventListener('submit',async event=>{
@@ -199,7 +203,7 @@ $('#access-form').addEventListener('submit',async event=>{
   if(!validToken(token))return setStatus('The team access code should be 43 characters.','error','#login-status');
   saveToken(token);
   try{await enterDashboard();$('#access-code').value=''}
-  catch(error){clearToken();showLogin(error.message)}
+  catch(error){if(error.status===403)clearToken();showLogin(error.message)}
 });
 $('#copy-admin-link').addEventListener('click',async()=>{
   try{
@@ -216,7 +220,7 @@ $('.tabs').addEventListener('click',event=>{
   for(const item of document.querySelectorAll('[data-tab]')){item.classList.toggle('selected',item===button);item.removeAttribute('aria-current')}
   button.setAttribute('aria-current','page');
   $('#products-panel').hidden=tab!=='products';$('#orders-panel').hidden=tab!=='orders';
-  if(tab==='orders'&&!state.orders.length)loadOrders(true);
+  if(tab==='orders'&&!state.orders.length)loadOrders(0);
 });
 $('#product-search').addEventListener('input',renderProductList);
 $('#product-list').addEventListener('click',event=>{
@@ -236,9 +240,25 @@ $('#product-editor').addEventListener('click',event=>{
   if(target.dataset.saveVariant)saveVariant(target.closest('tr'));
   if(target.id==='add-pack')saveVariant(null,true);
 });
-$('#refresh-orders').addEventListener('click',()=>loadOrders(true));
-$('#load-more-orders').addEventListener('click',()=>loadOrders());
-$('#order-source').addEventListener('change',renderOrders);
+$('#refresh-orders').addEventListener('click',()=>loadOrders(state.ordersPage));
+$('#previous-orders').addEventListener('click',()=>loadOrders(state.ordersPage-1));
+$('#next-orders').addEventListener('click',()=>loadOrders(state.ordersPage+1));
+$('#order-source').addEventListener('change',()=>loadOrders(0));
+$('#orders-list').addEventListener('click',event=>{
+  if(event.target.closest('[data-order-stage]'))event.stopPropagation();
+});
+$('#orders-list').addEventListener('change',async event=>{
+  const select=event.target.closest('[data-order-stage]');if(!select)return;
+  const order=state.orders.find(o=>String(o.id)===select.dataset.orderStage);if(!order)return;
+  const previous=order.fulfillment_status || 'processing';
+  select.disabled=true;
+  try{
+    const data=await adminApi('admin_update_fulfillment',{id:order.id,status:select.value,previousStatus:previous});
+    order.fulfillment_status=data.fulfillmentStatus;
+    setStatus(`Order ${order.reference_id} marked ${data.fulfillmentStatus}.`,'success');
+  }catch(error){select.value=previous;setStatus(error.message,'error')}
+  finally{select.disabled=false}
+});
 
 async function start(){
   try{
@@ -252,7 +272,7 @@ async function start(){
       if(validToken(linkToken))saveToken(linkToken);
     }else state.token=sessionStorage.getItem(accessStorageKey);
     if(state.token){
-      try{await enterDashboard();return}catch(error){clearToken();showLogin(error.message)}
+      try{await enterDashboard();return}catch(error){if(error.status===403)clearToken();showLogin(error.message)}
     }
   }catch(error){showLogin(error.message)}
 }

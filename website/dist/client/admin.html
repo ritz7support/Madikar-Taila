@@ -46,7 +46,7 @@
         <div class="section-heading"><div><h2>Orders</h2><p>Website and WhatsApp orders in one place. Open an order to see its items, payment and delivery details.</p></div><button type="button" id="refresh-orders">Refresh orders</button></div>
         <div class="filters"><label for="order-source">Source</label><select id="order-source"><option value="all">All sources</option><option value="store">Website</option><option value="whatsapp">WhatsApp</option></select></div>
         <div id="orders-list" class="orders-list"></div>
-        <button type="button" id="load-more-orders" hidden>Load more orders</button>
+        <nav class="order-pagination" aria-label="Orders pages"><button type="button" id="previous-orders">Previous</button><span id="orders-page-label" aria-live="polite">Page 1</span><button type="button" id="next-orders">Next</button></nav>
       </section>
     </section>
   </main>
