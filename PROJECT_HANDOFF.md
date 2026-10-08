@@ -1,6 +1,13 @@
 # Madikar Taila — project analysis starting point
 
-Updated 7 October 2026. The consolidated main baseline has follow-ups on codex/variant-shipping-weights (optional admin shipping weights), codex/admin-ui-refresh (UI only), and codex/admin-orders-management (current admin order workflow). Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve any newer work. The older codex/website and cursor/production-hardening branches remain as history.
+Updated 8 October 2026. The consolidated main baseline has follow-ups on codex/variant-shipping-weights (optional admin shipping weights), codex/admin-ui-refresh (UI only), codex/admin-orders-management (admin order workflow), and codex/unified-order-references (current website reference update). Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve any newer work. The older codex/website and cursor/production-hardening branches remain as history.
+
+## 8 October order reference update
+
+- New website orders in both test and live modes use `ORD-<Unix milliseconds>-<six uppercase hexadecimal characters>`, matching the existing WhatsApp pattern. Migration `20261008160704_unify_website_order_references.sql` is applied. Only the reference assignment inside the website's `store_finalize_checkout` RPC changed; its payment validation, transaction and service-only permissions are preserved.
+- Existing order references are unchanged, including when a payment callback is repeated. Read payment mode from `store_checkout_sessions.mode` or the handoff's `payment_mode`/`is_test` fields; new references no longer identify test orders with a prefix.
+- Both existing payment-confirmation message flows remain unchanged. No bot or website Edge Function was deployed, and no website publication was required. The Site remains version 28 and `madikar-store` remains version 12.
+- All 38 automated tests passed. `supabase/tests/unified-order-references.sql` passed against the live database using rollback-only fixtures: both modes, reference format, duplicate callbacks, historical references, amount validation and confirmation queuing. No real payment or customer message was sent.
 
 ## 7 October admin orders update
 
