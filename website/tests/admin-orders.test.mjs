@@ -20,7 +20,7 @@ function harness(){
   const context=vm.createContext({document:{querySelector:node},URL,URLSearchParams,Response,
     fetch:async(_url,options)=>{
       const body=JSON.parse(options.body);calls.push(body);
-      if(body.action==='admin_update_fulfillment')return Response.json({fulfillmentStatus:body.status,trackingId:body.trackingId || null});
+      if(body.action==='admin_update_fulfillment')return Response.json({fulfillmentStatus:body.status,trackingId:body.trackingId || null,estimatedDeliveryDays:body.estimatedDeliveryDays ?? null});
       const filtered=orders.filter(o=>body.source==='all'||o.source===body.source).toReversed();
       return Response.json({orders:filtered.slice(body.page*20,(body.page+1)*20),hasMore:filtered.length>(body.page+1)*20});
     }});
@@ -66,11 +66,14 @@ test('source badges differ and paid orders expose four delivery stages',async()=
   await h.node('#shipping-form').listeners.submit({preventDefault(){}});
   assert.equal(h.calls.length,before,'blank tracking must not write');
   h.node('#tracking-id').value=' TRACK-123 ';
+  h.node('#delivery-days').value='5';
   await h.node('#shipping-form').listeners.submit({preventDefault(){}});
   assert.equal(h.calls.at(-1).action,'admin_update_fulfillment');
   assert.equal(h.calls.at(-1).previousStatus,'processing');
   assert.equal(h.calls.at(-1).status,'shipped');
   assert.equal(h.calls.at(-1).trackingId,'TRACK-123');
+  assert.equal(h.calls.at(-1).estimatedDeliveryDays,5);
+  assert.equal(h.node('#order-delivery-5').textContent,'Estimated delivery: within 5 days of dispatch');
   assert.equal(select.value,'shipped');
   assert.equal(h.node('#shipping-dialog').open,false);
   assert.equal(select.disabled,false);
@@ -92,4 +95,23 @@ test('cancelling shipment or a failed save preserves the prior order stage',asyn
   assert.equal(h.node('#shipping-dialog').open,true);
   assert.match(h.node('#shipping-error').textContent,/Order changed/);
   assert.equal(h.node('#shipping-save').disabled,false);
+});
+
+test('delivery estimate rejects non-positive or fractional days and allows unknown',async()=>{
+  const h=harness();await vm.runInContext('loadOrders(0)',h.context);
+  const select={dataset:{orderStage:'25'},value:'shipped',disabled:false};
+  await h.node('#orders-list').listeners.change({target:{closest:()=>select}});
+  h.node('#tracking-id').value='TRACK-123';
+  const before=h.calls.length;
+  for(const value of ['0','-1','1.5','abc','2147483648']){
+    h.node('#delivery-days').value=value;
+    await h.node('#shipping-form').listeners.submit({preventDefault(){}});
+    assert.equal(h.calls.length,before);assert.equal(select.value,'processing');
+    assert.match(h.node('#shipping-error').textContent,/positive whole number/);
+  }
+  h.node('#delivery-days').value='';
+  await h.node('#shipping-form').listeners.submit({preventDefault(){}});
+  assert.equal(h.calls.at(-1).estimatedDeliveryDays,null);
+  assert.equal(h.node('#order-delivery-25').textContent,'');
+  assert.equal(select.value,'shipped');
 });

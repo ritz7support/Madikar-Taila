@@ -168,13 +168,23 @@ async function adminAction(body) {
         throw Object.assign(new Error('Enter a tracking ID of 1 to 120 characters before marking the order shipped.'),{status:400});
       }
       fields.tracking_id = tracking;
+      // Old admin tabs omit the estimate; preserve an existing value on PATCH.
+      if (Object.prototype.hasOwnProperty.call(body,'estimatedDeliveryDays')) {
+        const raw = body.estimatedDeliveryDays;
+        const days = raw === null || (typeof raw === 'string' && raw.trim() === '') ? null : Number(raw);
+        if (days !== null && (!['number','string'].includes(typeof raw) || !Number.isInteger(days) || days < 1 || days > 2147483647)) {
+          throw Object.assign(new Error('Estimated delivery must be a positive whole number of days, or blank.'),{status:400});
+        }
+        fields.estimated_delivery_days = days;
+      }
     }
     const response = await database('/rest/v1/orders?id=eq.' + id + '&status=neq.pending_payment&fulfillment_status=eq.' + previous,{
       method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(fields)
     });
     const order = response.payload?.[0];
     if (!order) throw Object.assign(new Error('Order changed or is awaiting payment. Refresh orders and try again.'),{status:409});
-    return {id:order.id,fulfillmentStatus:order.fulfillment_status,trackingId:order.tracking_id || null};
+    return {id:order.id,fulfillmentStatus:order.fulfillment_status,trackingId:order.tracking_id || null,
+      estimatedDeliveryDays:order.estimated_delivery_days ?? null};
   }
   if (body.action === 'admin_save_product') {
     const product = await storeProduct(body.id);

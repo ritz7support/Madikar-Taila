@@ -53,11 +53,14 @@
   </main>
   <dialog id="shipping-dialog" class="shipping-dialog" aria-labelledby="shipping-title" aria-describedby="shipping-help">
     <form id="shipping-form">
-      <p class="eyebrow">Dispatch order</p><h2 id="shipping-title">Add tracking ID</h2>
+      <p class="eyebrow">Dispatch order</p><h2 id="shipping-title">Shipment details</h2>
       <p id="shipping-order-reference" class="help"></p>
       <p id="shipping-help">Enter the courier tracking ID to mark this order as Shipped.</p>
       <label for="tracking-id">Tracking ID</label>
       <input id="tracking-id" name="trackingId" type="text" required maxlength="120" autocomplete="off">
+      <label for="delivery-days" class="delivery-days-label">Estimated delivery (days)</label>
+      <input id="delivery-days" name="estimatedDeliveryDays" type="number" min="1" max="2147483647" step="1" placeholder="e.g. 5" aria-describedby="delivery-days-help">
+      <p id="delivery-days-help" class="help">Number of days after dispatch. Leave blank if unknown.</p>
       <p id="shipping-error" class="status" data-tone="error" role="alert"></p>
       <div class="shipping-actions"><button type="button" id="shipping-cancel">Cancel</button><button type="submit" id="shipping-save" class="primary">Save & mark Shipped</button></div>
     </form>

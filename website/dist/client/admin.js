@@ -166,6 +166,10 @@ function orderAddress(order){
   if(!a)return '';
   return [a.line1 || a.address_line_1,a.line2 || a.address_line_2,a.city,a.state,a.postalCode || a.pincode].filter(Boolean).join(', ');
 }
+function deliveryEstimate(order){
+  const days=order.estimated_delivery_days;
+  return Number.isInteger(days)&&days>0?`Estimated delivery: within ${days} ${days===1?'day':'days'} of dispatch`:'';
+}
 function renderOrders(){
   $('#orders-loading').hidden=!state.orderLoading;
   $('#orders-list').setAttribute('aria-busy',String(state.orderLoading));
@@ -184,7 +188,7 @@ function renderOrders(){
     const statusControl=`<label class="visually-hidden" for="order-stage-${o.id}">Order status for ${escapeHtml(o.reference_id)}</label><select id="order-stage-${o.id}" data-order-stage="${o.id}" aria-label="Order status for ${escapeHtml(o.reference_id)}" ${paid?'':'disabled'}>${[['processing','Processing'],['shipped','Shipped'],['completed','Completed'],['cancelled','Cancelled']].map(([value,label])=>`<option value="${value}" ${stage===value?'selected':''}>${label}</option>`).join('')}</select>${paid?'':'<small class="pending-payment">Awaiting payment</small>'}`;
     return `<details class="order-card"><summary><span><strong>${escapeHtml(o.reference_id)}</strong><small>${escapeHtml(date)}</small></span><span>${escapeHtml(customer)}</span><span><span class="pill ${o.source==='store'?'pill--store':'pill--whatsapp'}">${o.source==='store'?'Website':'WhatsApp'}</span></span><span class="order-stage">${statusControl}</span><strong>${money(o.total)}</strong></summary>
       <div class="order-detail"><div><h3>Items</h3><ul>${items || '<li>No line items</li>'}</ul><p>Subtotal ${money(o.subtotal)} · Shipping ${money(o.shipping)}</p></div>
-      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>Payment: ${payments}</p><p id="order-tracking-${o.id}">${o.tracking_id?'Tracking ID: '+escapeHtml(o.tracking_id):''}</p></div></div></details>`;
+      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>Payment: ${payments}</p><p id="order-tracking-${o.id}">${o.tracking_id?'Tracking ID: '+escapeHtml(o.tracking_id):''}</p><p id="order-delivery-${o.id}">${deliveryEstimate(o)}</p></div></div></details>`;
   }).join(''):state.orderLoading?'':'<p class="panel empty">No orders in this view.</p>';
   $('#orders-page-label').textContent=`Page ${state.ordersPage+1} · up to 20 orders`;
   $('#previous-orders').disabled=state.orderLoading||state.ordersPage===0;
@@ -254,15 +258,17 @@ $('#order-source').addEventListener('change',()=>loadOrders(0));
 $('#orders-list').addEventListener('click',event=>{
   if(event.target.closest('[data-order-stage]'))event.stopPropagation();
 });
-async function updateOrderStage(order,select,stage,trackingId){
+async function updateOrderStage(order,select,stage,trackingId,estimatedDeliveryDays){
   const previous=order.fulfillment_status || 'processing';
   select.disabled=true;
   try{
-    const data=await adminApi('admin_update_fulfillment',{id:order.id,status:stage,previousStatus:previous,...(stage==='shipped'?{trackingId}:{})});
+    const data=await adminApi('admin_update_fulfillment',{id:order.id,status:stage,previousStatus:previous,...(stage==='shipped'?{trackingId,estimatedDeliveryDays}:{})});
     order.fulfillment_status=data.fulfillmentStatus;
     order.tracking_id=data.trackingId ?? order.tracking_id;
+    if(Object.hasOwn(data,'estimatedDeliveryDays'))order.estimated_delivery_days=data.estimatedDeliveryDays;
     select.value=data.fulfillmentStatus;
     $(`#order-tracking-${order.id}`).textContent=order.tracking_id?'Tracking ID: '+order.tracking_id:'';
+    $(`#order-delivery-${order.id}`).textContent=deliveryEstimate(order);
     setStatus(`Order ${order.reference_id} marked ${data.fulfillmentStatus}.`,'success');
   }catch(error){select.value=previous;throw error}
   finally{select.disabled=false}
@@ -276,6 +282,7 @@ $('#orders-list').addEventListener('change',async event=>{
     state.shipment={order,select,saving:false};
     $('#shipping-order-reference').textContent=order.reference_id;
     $('#tracking-id').value=order.tracking_id || '';
+    $('#delivery-days').value=order.estimated_delivery_days ?? '';
     $('#shipping-error').textContent='';
     $('#shipping-dialog').showModal();
     $('#tracking-id').focus();
@@ -293,12 +300,17 @@ $('#shipping-form').addEventListener('submit',async event=>{
   if(!trackingId || trackingId.length>120 || /[\x00-\x1f\x7f]/.test(trackingId)){
     $('#shipping-error').textContent='Enter a tracking ID of 1 to 120 characters.';$('#tracking-id').focus();return;
   }
+  const rawDays=$('#delivery-days').value.trim();
+  const estimatedDeliveryDays=rawDays===''?null:Number(rawDays);
+  if(estimatedDeliveryDays!==null&&(!Number.isInteger(estimatedDeliveryDays)||estimatedDeliveryDays<1||estimatedDeliveryDays>2147483647)){
+    $('#shipping-error').textContent='Estimated delivery must be a positive whole number of days.';$('#delivery-days').focus();return;
+  }
   shipment.saving=true;
   $('#shipping-error').textContent='';
-  $('#shipping-save').disabled=true;$('#shipping-cancel').disabled=true;$('#tracking-id').disabled=true;
-  try{await updateOrderStage(shipment.order,shipment.select,'shipped',trackingId);$('#shipping-dialog').close()}
+  $('#shipping-save').disabled=true;$('#shipping-cancel').disabled=true;$('#tracking-id').disabled=true;$('#delivery-days').disabled=true;
+  try{await updateOrderStage(shipment.order,shipment.select,'shipped',trackingId,estimatedDeliveryDays);$('#shipping-dialog').close()}
   catch(error){$('#shipping-error').textContent=error.message}
-  finally{shipment.saving=false;$('#shipping-save').disabled=false;$('#shipping-cancel').disabled=false;$('#tracking-id').disabled=false}
+  finally{shipment.saving=false;$('#shipping-save').disabled=false;$('#shipping-cancel').disabled=false;$('#tracking-id').disabled=false;$('#delivery-days').disabled=false}
 });
 
 async function start(){

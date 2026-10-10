@@ -131,11 +131,21 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId})).status,400);
     assert.equal(databaseCalls.length,count,'invalid tracking must not reach the database');
   }
-  const changed=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId:' TRACK-123 '});
+  for(const estimatedDeliveryDays of [0,-1,1.5,'abc',true,[],{},2147483648]){
+    const count=databaseCalls.length;
+    assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId:'TRACK-123',estimatedDeliveryDays})).status,400);
+    assert.equal(databaseCalls.length,count,'invalid delivery estimates must not write');
+  }
+  const changed=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId:' TRACK-123 ',estimatedDeliveryDays:'5'});
   assert.equal(changed.status,200);
   assert.equal((await changed.json()).fulfillmentStatus,'shipped');
   assert.equal(orders[1].status,'processing','payment and bot status must remain unchanged');
   assert.equal(orders[1].tracking_id,'TRACK-123');
+  assert.equal(orders[1].estimated_delivery_days,5);
+  const legacyShipment=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'shipped',trackingId:'TRACK-123'});
+  assert.equal((await legacyShipment.json()).estimatedDeliveryDays,5,'old admin clients preserve saved estimates');
+  const clearedShipment=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'shipped',trackingId:'TRACK-123',estimatedDeliveryDays:null});
+  assert.equal((await clearedShipment.json()).estimatedDeliveryDays,null);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:1,status:'shipped',previousStatus:'processing',trackingId:'TRACK-123'})).status,409);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'completed',previousStatus:'processing'})).status,409);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'unknown',previousStatus:'shipped'})).status,400);

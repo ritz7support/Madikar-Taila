@@ -1,6 +1,13 @@
 # Madikar Taila — project analysis starting point
 
-Updated 10 October 2026. The consolidated main baseline has follow-ups on codex/variant-shipping-weights (optional admin shipping weights), codex/admin-ui-refresh (UI only), codex/admin-orders-management (admin order workflow), codex/unified-order-references (website references), and codex/admin-tracking-and-loading (current admin fixes). Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve any newer work. The older codex/website and cursor/production-hardening branches remain as history.
+Updated 10 October 2026. The consolidated main baseline has follow-ups on codex/variant-shipping-weights (optional admin shipping weights), codex/admin-ui-refresh (UI only), codex/admin-orders-management (admin order workflow), codex/unified-order-references (website references), codex/admin-tracking-and-loading (admin fixes), and codex/admin-delivery-estimate (current shipment estimate). Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve any newer work. The older codex/website and cursor/production-hardening branches remain as history.
+
+## 10 October delivery estimate update
+
+- The shipment popup now includes Estimated delivery (days), counted as calendar days after dispatch. A blank value means unknown; entered values must be positive whole numbers. It saves atomically with the tracking ID and Shipped stage in nullable `orders.estimated_delivery_days`. Order details display the estimate, and later stage changes retain it. Old admin clients that omit the field preserve an existing estimate.
+- Migration `20261010125721_add_order_estimated_delivery_days.sql` is applied. The existing service-only order-page RPC returns the new field; its privileges are unchanged. Only the website function `madikar-store` was deployed, now version 14. Bot functions, checkout handlers and payment messages remain unchanged.
+- All 40 automated tests passed, along with mocked browser checks for validation, save/reload, later-stage preservation, tracking/cancel/failure behavior, pagination and five viewport widths. Rollback-only SQL fixture `supabase/tests/admin-delivery-estimate.sql` passed; existing order data excluding the new nullable column had the same hash after the migration. No real payment, message or staff order edit was made.
+- Site version 30 is deployed from Sites commit `c695605cd8de79b53628502b4bc540ea41b83b0a`; deployment `appgdep_6aca36bc9ff08191bc4a5b4556e53c78` succeeded. All three deployed `madikar-store` files match local source. Verification evidence is under `outputs/admin-delivery/`.
 
 ## 10 October admin loading and tracking update
 
