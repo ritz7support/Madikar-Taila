@@ -1,7 +1,7 @@
 const $ = selector => document.querySelector(selector);
 const escapeHtml = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const money = value => '₹' + Number(value || 0).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2});
-const state = {config:null,token:null,products:[],orders:[],ordersPage:0,hasMore:false,orderLoading:false,selectedId:null,editing:null};
+const state = {config:null,token:null,products:[],orders:[],ordersPage:0,hasMore:false,orderLoading:false,ordersLoaded:false,shipment:null,selectedId:null,editing:null};
 const accessStorageKey = 'madikar-admin-access';
 const validToken = value => /^[A-Za-z0-9_-]{43}$/.test(value || '');
 const setStatus = (message,tone='note',target='#dashboard-status') => {
@@ -70,7 +70,7 @@ function editorValues(){
   const images=[...editor.querySelectorAll('.image-row')].map(row=>({
     url:row.querySelector('[data-image-url]').value.trim(),
     alt:row.querySelector('[data-image-alt]').value.trim(),
-    kind:row.querySelector('[data-image-kind]').value
+    kind:row.dataset.imageKind === 'illustration' ? 'illustration' : 'product_photo'
   })).filter(image=>image.url);
   return {name:editor.querySelector('#edit-name')?.value.trim() || '',
     category:editor.querySelector('#edit-category')?.value.trim() || '',
@@ -85,18 +85,18 @@ function rememberEditor(){
 function renderEditor(){
   const p=state.editing;
   if(!p){$('#product-editor').innerHTML='<p class="empty">Select a product to edit it.</p>';return}
-  const images=(p.images || []).map((image,index)=>`<div class="image-row" data-image-index="${index}">
+  const images=(p.images || []).map((image,index)=>`<div class="image-row" data-image-index="${index}" data-image-kind="${image.kind==='illustration'?'illustration':'product_photo'}">
     <img src="${escapeHtml(imageUrl(image.url))}" alt="">
     <label class="url-field">Image URL<input data-image-url type="url" value="${escapeHtml(image.url)}" placeholder="Supabase image URL or assets/name.jpg"></label>
     <label>Alt text<input data-image-alt value="${escapeHtml(image.alt || '')}" maxlength="160"></label>
-    <div><label>Type<select data-image-kind><option value="product_photo" ${image.kind==='product_photo'?'selected':''}>Photo</option><option value="illustration" ${image.kind==='illustration'?'selected':''}>Illustration</option></select></label><button type="button" data-remove-image="${index}">Remove</button></div>
+    <div><button type="button" data-remove-image="${index}">Remove</button></div>
   </div>`).join('');
   const packs=(p.variants || []).map(v=>`<tr data-variant-id="${v.id}">
     <td><input data-size value="${escapeHtml(v.size)}" maxlength="40" aria-label="Pack size"></td>
     <td><input data-price type="number" min="1" max="100000" step=".01" value="${escapeHtml(v.price)}" aria-label="Price in rupees"></td>
     <td><input data-stock type="number" min="0" step="1" value="${v.inventory_quantity ?? ''}" placeholder="Unknown" aria-label="Units in stock"></td>
     <td><input data-shipping-weight type="number" min="1" max="2147483647" step="1" value="${escapeHtml(v.shipping_weight_grams ?? '')}" placeholder="Unknown" aria-label="Shipping weight in grams"></td>
-    <td><select data-availability aria-label="Availability"><option value="unverified" ${v.availability_status==='unverified'?'selected':''}>Confirm first</option><option value="available" ${v.availability_status==='available'?'selected':''}>Available</option><option value="unavailable" ${v.availability_status==='unavailable'?'selected':''}>Unavailable</option></select></td>
+    <td><select data-availability aria-label="Availability"><option value="available" ${v.availability_status==='available'?'selected':''}>Available</option><option value="unavailable" ${v.availability_status!=='available'?'selected':''}>Unavailable</option></select></td>
     <td><button type="button" data-save-variant="${v.id}">Save</button></td>
   </tr>`).join('');
   $('#product-editor').innerHTML=`<div class="editor-header"><div><p>${p.meta_linked?'Meta-linked record · store fields only':'Madikar store product'}</p><h2>${p.id?escapeHtml(p.display_name || p.name):'New product'}</h2></div><span class="pill ${p.store_active?'':'off'}">${p.store_active?'Listed':'Hidden'}</span></div>
@@ -111,7 +111,7 @@ function renderEditor(){
     <h3>Packs, pricing & weight</h3><p class="help">Save each pack after editing. Leave stock blank when unknown. “Unavailable” prevents new orders for that pack.</p>
     <p class="help">Shipping weight is for one pack in whole grams, including its bottle, jar or wrapper. Exclude the outer delivery box. Leave blank if unknown. Saving weights does not change shipping charges yet.</p>
     <div class="pack-table-scroll"><table class="pack-table"><thead><tr><th>Size</th><th>Price</th><th>Stock</th><th>Shipping weight (g)</th><th>Availability</th><th></th></tr></thead><tbody>${packs || '<tr><td colspan="6">No pack sizes yet.</td></tr>'}</tbody></table></div>
-    <div class="new-pack"><h4>Add a pack</h4><p class="help">Create another size for this product.</p><div class="new-pack-fields"><label>Pack size<input id="new-size" placeholder="e.g. 500 ml" aria-label="New pack size"></label><label>Price (₹)<input id="new-price" type="number" min="1" step=".01" placeholder="0.00" aria-label="New pack price"></label><label>Stock<input id="new-stock" type="number" min="0" step="1" placeholder="Unknown" aria-label="New pack stock"></label><label>Weight (g)<input id="new-shipping-weight" type="number" min="1" max="2147483647" step="1" placeholder="Unknown" aria-label="New pack shipping weight in grams"></label><label>Availability<select id="new-availability" aria-label="New pack availability"><option value="unverified">Confirm first</option><option value="available">Available</option><option value="unavailable">Unavailable</option></select></label><button type="button" id="add-pack" ${p.id?'':'disabled'}>Add pack</button></div></div>`;
+    <div class="new-pack"><h4>Add a pack</h4><p class="help">Create another size for this product.</p><div class="new-pack-fields"><label>Pack size<input id="new-size" placeholder="e.g. 500 ml" aria-label="New pack size"></label><label>Price (₹)<input id="new-price" type="number" min="1" step=".01" placeholder="0.00" aria-label="New pack price"></label><label>Stock<input id="new-stock" type="number" min="0" step="1" placeholder="Unknown" aria-label="New pack stock"></label><label>Weight (g)<input id="new-shipping-weight" type="number" min="1" max="2147483647" step="1" placeholder="Unknown" aria-label="New pack shipping weight in grams"></label><label>Availability<select id="new-availability" aria-label="New pack availability"><option value="unavailable">Unavailable</option><option value="available">Available</option></select></label><button type="button" id="add-pack" ${p.id?'':'disabled'}>Add pack</button></div></div>`;
 }
 async function saveProduct(){
   const values=editorValues();
@@ -167,23 +167,30 @@ function orderAddress(order){
   return [a.line1 || a.address_line_1,a.line2 || a.address_line_2,a.city,a.state,a.postalCode || a.pincode].filter(Boolean).join(', ');
 }
 function renderOrders(){
+  $('#orders-loading').hidden=!state.orderLoading;
+  $('#orders-list').setAttribute('aria-busy',String(state.orderLoading));
   $('#orders-list').innerHTML=state.orders.length?state.orders.map(o=>{
     const customer=o.customer_name || o.profile?.name || o.whatsapp_user_id || 'Customer';
     const phone=o.customer_phone || o.address?.phone || o.whatsapp_user_id || '';
     const date=new Date(o.created_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});
     const items=(o.items || []).map(i=>`<li>${escapeHtml(i.product_name || i.product_retailer_id)}${i.variant_size?' · '+escapeHtml(i.variant_size):''} × ${i.quantity} — ${money(i.unit_price*i.quantity)}</li>`).join('');
-    const payments=(o.payments || []).map(p=>`${escapeHtml(p.status)}${p.provider_payment_id?' · '+escapeHtml(p.provider_payment_id):''}`).join(', ');
+    const paymentRows=o.payments || [];
+    const paidPayment=paymentRows.find(p=>p.status==='paid');
+    const payment=paidPayment || paymentRows[0];
+    const paymentLabel=payment?.status || (o.status==='pending_payment'?'Awaiting payment':['paid','processing'].includes(o.status)?'Paid':'No payment recorded');
+    const payments=escapeHtml(paymentLabel).replaceAll('_',' ') + (payment?.provider_payment_id?' · '+escapeHtml(payment.provider_payment_id):'');
     const paid=o.status!=='pending_payment';
     const stage=['processing','shipped','completed','cancelled'].includes(o.fulfillment_status)?o.fulfillment_status:'processing';
     const statusControl=`<label class="visually-hidden" for="order-stage-${o.id}">Order status for ${escapeHtml(o.reference_id)}</label><select id="order-stage-${o.id}" data-order-stage="${o.id}" aria-label="Order status for ${escapeHtml(o.reference_id)}" ${paid?'':'disabled'}>${[['processing','Processing'],['shipped','Shipped'],['completed','Completed'],['cancelled','Cancelled']].map(([value,label])=>`<option value="${value}" ${stage===value?'selected':''}>${label}</option>`).join('')}</select>${paid?'':'<small class="pending-payment">Awaiting payment</small>'}`;
     return `<details class="order-card"><summary><span><strong>${escapeHtml(o.reference_id)}</strong><small>${escapeHtml(date)}</small></span><span>${escapeHtml(customer)}</span><span><span class="pill ${o.source==='store'?'pill--store':'pill--whatsapp'}">${o.source==='store'?'Website':'WhatsApp'}</span></span><span class="order-stage">${statusControl}</span><strong>${money(o.total)}</strong></summary>
       <div class="order-detail"><div><h3>Items</h3><ul>${items || '<li>No line items</li>'}</ul><p>Subtotal ${money(o.subtotal)} · Shipping ${money(o.shipping)}</p></div>
-      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>Payment: ${escapeHtml(o.status).replaceAll('_',' ')}${payments?' · '+payments:''}</p></div></div></details>`;
-  }).join(''):'<p class="panel empty">No orders in this view.</p>';
+      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>Payment: ${payments}</p><p id="order-tracking-${o.id}">${o.tracking_id?'Tracking ID: '+escapeHtml(o.tracking_id):''}</p></div></div></details>`;
+  }).join(''):state.orderLoading?'':'<p class="panel empty">No orders in this view.</p>';
   $('#orders-page-label').textContent=`Page ${state.ordersPage+1} · up to 20 orders`;
   $('#previous-orders').disabled=state.orderLoading||state.ordersPage===0;
   $('#next-orders').disabled=state.orderLoading||!state.hasMore;
   $('#order-source').disabled=state.orderLoading;
+  $('#refresh-orders').disabled=state.orderLoading;
 }
 async function loadOrders(page=0){
   if(state.orderLoading)return;
@@ -191,7 +198,7 @@ async function loadOrders(page=0){
   renderOrders();
   try{
     const data=await adminApi('admin_orders',{page,source:$('#order-source').value});
-    state.orders=data.orders || [];state.ordersPage=page;state.hasMore=Boolean(data.hasMore);
+    state.orders=data.orders || [];state.ordersPage=page;state.hasMore=Boolean(data.hasMore);state.ordersLoaded=true;
     setStatus(`${state.orders.length} orders on page ${page+1}.`,'success');
   }catch(error){setStatus(error.message,'error')}
   finally{state.orderLoading=false;renderOrders()}
@@ -220,7 +227,7 @@ $('.tabs').addEventListener('click',event=>{
   for(const item of document.querySelectorAll('[data-tab]')){item.classList.toggle('selected',item===button);item.removeAttribute('aria-current')}
   button.setAttribute('aria-current','page');
   $('#products-panel').hidden=tab!=='products';$('#orders-panel').hidden=tab!=='orders';
-  if(tab==='orders'&&!state.orders.length)loadOrders(0);
+  if(tab==='orders'&&!state.ordersLoaded)loadOrders(0);
 });
 $('#product-search').addEventListener('input',renderProductList);
 $('#product-list').addEventListener('click',event=>{
@@ -247,17 +254,51 @@ $('#order-source').addEventListener('change',()=>loadOrders(0));
 $('#orders-list').addEventListener('click',event=>{
   if(event.target.closest('[data-order-stage]'))event.stopPropagation();
 });
+async function updateOrderStage(order,select,stage,trackingId){
+  const previous=order.fulfillment_status || 'processing';
+  select.disabled=true;
+  try{
+    const data=await adminApi('admin_update_fulfillment',{id:order.id,status:stage,previousStatus:previous,...(stage==='shipped'?{trackingId}:{})});
+    order.fulfillment_status=data.fulfillmentStatus;
+    order.tracking_id=data.trackingId ?? order.tracking_id;
+    select.value=data.fulfillmentStatus;
+    $(`#order-tracking-${order.id}`).textContent=order.tracking_id?'Tracking ID: '+order.tracking_id:'';
+    setStatus(`Order ${order.reference_id} marked ${data.fulfillmentStatus}.`,'success');
+  }catch(error){select.value=previous;throw error}
+  finally{select.disabled=false}
+}
 $('#orders-list').addEventListener('change',async event=>{
   const select=event.target.closest('[data-order-stage]');if(!select)return;
   const order=state.orders.find(o=>String(o.id)===select.dataset.orderStage);if(!order)return;
   const previous=order.fulfillment_status || 'processing';
-  select.disabled=true;
-  try{
-    const data=await adminApi('admin_update_fulfillment',{id:order.id,status:select.value,previousStatus:previous});
-    order.fulfillment_status=data.fulfillmentStatus;
-    setStatus(`Order ${order.reference_id} marked ${data.fulfillmentStatus}.`,'success');
-  }catch(error){select.value=previous;setStatus(error.message,'error')}
-  finally{select.disabled=false}
+  if(select.value==='shipped'){
+    select.value=previous;
+    state.shipment={order,select,saving:false};
+    $('#shipping-order-reference').textContent=order.reference_id;
+    $('#tracking-id').value=order.tracking_id || '';
+    $('#shipping-error').textContent='';
+    $('#shipping-dialog').showModal();
+    $('#tracking-id').focus();
+    return;
+  }
+  try{await updateOrderStage(order,select,select.value)}catch(error){setStatus(error.message,'error')}
+});
+$('#shipping-cancel').addEventListener('click',()=>{if(!state.shipment?.saving)$('#shipping-dialog').close()});
+$('#shipping-dialog').addEventListener('cancel',event=>{if(state.shipment?.saving)event.preventDefault()});
+$('#shipping-dialog').addEventListener('close',()=>{state.shipment=null});
+$('#shipping-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const shipment=state.shipment;if(!shipment || shipment.saving)return;
+  const trackingId=$('#tracking-id').value.trim();
+  if(!trackingId || trackingId.length>120 || /[\x00-\x1f\x7f]/.test(trackingId)){
+    $('#shipping-error').textContent='Enter a tracking ID of 1 to 120 characters.';$('#tracking-id').focus();return;
+  }
+  shipment.saving=true;
+  $('#shipping-error').textContent='';
+  $('#shipping-save').disabled=true;$('#shipping-cancel').disabled=true;$('#tracking-id').disabled=true;
+  try{await updateOrderStage(shipment.order,shipment.select,'shipped',trackingId);$('#shipping-dialog').close()}
+  catch(error){$('#shipping-error').textContent=error.message}
+  finally{shipment.saving=false;$('#shipping-save').disabled=false;$('#shipping-cancel').disabled=false;$('#tracking-id').disabled=false}
 });
 
 async function start(){

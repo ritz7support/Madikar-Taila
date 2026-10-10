@@ -36,7 +36,7 @@ async function authentic(request, raw) {
   }
   return false;
 }
-async function database(path, options = {}) {
+async function database(path, options = {}, readOnly = !options.method || options.method === 'GET') {
   if (!projectUrl || !serviceKey) throw new Error('Supabase service configuration is unavailable');
   const headers = {
     apikey: serviceKey,
@@ -51,7 +51,7 @@ async function database(path, options = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     response = await fetch(projectUrl + path, {...options, headers, signal:AbortSignal.timeout(12000)});
     payload = await response.json().catch(() => null);
-    if (response.ok || (options.method && options.method !== 'GET') || payload?.code !== 'PGRST303' || attempt === 2) break;
+    if (response.ok || !readOnly || payload?.code !== 'PGRST303' || attempt === 2) break;
     await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 150 : 350));
   }
   if (!response.ok) {
@@ -148,30 +148,10 @@ async function adminAction(body) {
     if (!Number.isInteger(page) || page < 0 || page > 1000) throw new Error('Invalid page');
     const source = body.source || 'all';
     if (!['all','store','whatsapp'].includes(source)) throw Object.assign(new Error('Invalid order source'),{status:400});
-    const filter = source === 'all' ? '' : '&source=eq.' + source;
-    const orders = await database('/rest/v1/orders?select=id,reference_id,source,status,fulfillment_status,created_at,total,subtotal,shipping,currency,whatsapp_user_id,profile_id,address_id' + filter + '&order=created_at.desc,id.desc&limit=21&offset=' + (page*20));
-    const found = orders.payload || [];
-    const rows = found.slice(0,20);
-    if (!rows.length) return {orders:[],hasMore:false,page};
-    const ids = rows.map(row => row.id).join(',');
-    const profileIds = [...new Set(rows.map(row => row.profile_id).filter(Boolean))];
-    const addressIds = [...new Set(rows.map(row => row.address_id).filter(Boolean))];
-    const [items,payments,profiles,addresses] = await Promise.all([
-      database('/rest/v1/order_items?select=order_id,product_name,product_retailer_id,quantity,unit_price&order_id=in.(' + ids + ')'),
-      database('/rest/v1/payments?select=order_id,status,provider_payment_id,amount&order_id=in.(' + ids + ')'),
-      profileIds.length ? database('/rest/v1/Profile?select=id,name,email,whatsAppUserId&id=in.(' + profileIds.join(',') + ')') : {payload:[]},
-      addressIds.length ? database('/rest/v1/addresses?select=id,recipient_name,phone,address_line_1,address_line_2,city,state,pincode,country&id=in.(' + addressIds.join(',') + ')') : {payload:[]}
-    ]);
-    const group = (array,key) => {
-      const map = new Map(); for (const item of array || []) { const list=map.get(item[key]) || []; list.push(item); map.set(item[key],list); } return map;
-    };
-    const itemMap=group(items.payload,'order_id'),paymentMap=group(payments.payload,'order_id');
-    const profileMap=new Map((profiles.payload || []).map(p => [p.id,p]));
-    const addressMap=new Map((addresses.payload || []).map(a => [a.id,a]));
-    return {orders:rows.map(o => ({
-      ...o,items:itemMap.get(o.id) || [],payments:paymentMap.get(o.id) || [],
-      profile:profileMap.get(o.profile_id) || null,address:addressMap.get(o.address_id) || null
-    })),hasMore:found.length > 20,page};
+    const orders = await database('/rest/v1/rpc/store_admin_orders_page',{
+      method:'POST',body:JSON.stringify({p_page:page,p_source:source})
+    },true);
+    return orders.payload;
   }
   if (body.action === 'admin_update_fulfillment') {
     const id = adminId(body.id);
@@ -181,12 +161,20 @@ async function adminAction(body) {
     if (!id || !stages.includes(stage) || !stages.includes(previous)) {
       throw Object.assign(new Error('Invalid order status'),{status:400});
     }
+    const fields = {fulfillment_status:stage};
+    if (stage === 'shipped') {
+      const tracking = typeof body.trackingId === 'string' ? body.trackingId.trim() : '';
+      if (!tracking || tracking.length > 120 || /[\x00-\x1f\x7f]/.test(tracking)) {
+        throw Object.assign(new Error('Enter a tracking ID of 1 to 120 characters before marking the order shipped.'),{status:400});
+      }
+      fields.tracking_id = tracking;
+    }
     const response = await database('/rest/v1/orders?id=eq.' + id + '&status=neq.pending_payment&fulfillment_status=eq.' + previous,{
-      method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({fulfillment_status:stage})
+      method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(fields)
     });
     const order = response.payload?.[0];
     if (!order) throw Object.assign(new Error('Order changed or is awaiting payment. Refresh orders and try again.'),{status:409});
-    return {id:order.id,fulfillmentStatus:order.fulfillment_status};
+    return {id:order.id,fulfillmentStatus:order.fulfillment_status,trackingId:order.tracking_id || null};
   }
   if (body.action === 'admin_save_product') {
     const product = await storeProduct(body.id);

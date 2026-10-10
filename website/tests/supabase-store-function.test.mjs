@@ -15,6 +15,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   let handler;
   let variant={id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:5,availability_status:'available',shipping_weight_grams:null};
   let rejectCatalogReads=0;
+  let rejectOrderReads=0;
   const orders=Array.from({length:25},(_,index)=>({id:index+1,reference_id:'ORDER-'+(index+1),source:index<8?'store':'whatsapp',
     status:index===0?'pending_payment':'processing',fulfillment_status:'processing',created_at:'2026-10-07T00:00:00Z',
     total:175,subtotal:175,shipping:0,profile_id:null,address_id:null}));
@@ -41,12 +42,18 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
         if (options.method === 'POST') return Response.json([{id:11,shipping_weight_grams:null,...JSON.parse(options.body)}]);
         return Response.json([variant]);
       }
+      if (String(url).includes('/rpc/store_admin_orders_page')) {
+        if(rejectOrderReads-->0)return Response.json({code:'PGRST303'},{status:401});
+        const {p_page,p_source}=JSON.parse(options.body);
+        const found=orders.filter(o=>p_source==='all'||o.source===p_source).toSorted((a,b)=>b.id-a.id);
+        return Response.json({orders:found.slice(p_page*20,(p_page+1)*20),hasMore:found.length>(p_page+1)*20,page:p_page});
+      }
       if (String(url).includes('/rest/v1/orders?')) {
         const query=new URL(url).searchParams;
         if (options.method === 'PATCH') {
           const order=orders.find(o=>String(o.id)===query.get('id')?.slice(3));
           if (!order || order.status==='pending_payment' || order.fulfillment_status!==query.get('fulfillment_status')?.slice(3)) return Response.json([]);
-          order.fulfillment_status=JSON.parse(options.body).fulfillment_status;
+          Object.assign(order,JSON.parse(options.body));
           return Response.json([order]);
         }
         const source=query.get('source')?.slice(3);
@@ -104,22 +111,32 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   const unavailable=await send({action:'admin_catalog',adminToken});
   assert.equal(unavailable.status,503,'persistent read failure is not an invalid team code');
   assert.match((await unavailable.json()).error,/try again/i);
+  const orderCalls=databaseCalls.length;
   const firstPage=await send({action:'admin_orders',adminToken,page:0,source:'all'});
   const firstResult=await firstPage.json();
   assert.equal(firstResult.orders.length,20);
   assert.equal(firstResult.hasMore,true);
   assert.equal(firstResult.orders[0].id,25);
+  assert.equal(databaseCalls.length-orderCalls,1,'one database request loads the complete page');
   const secondResult=await (await send({action:'admin_orders',adminToken,page:1,source:'all'})).json();
   assert.equal(secondResult.orders.length,5);
   assert.equal(secondResult.hasMore,false);
   const websiteOrders=await (await send({action:'admin_orders',adminToken,page:0,source:'store'})).json();
   assert.equal(websiteOrders.orders.length,8);
   assert.ok(websiteOrders.orders.every(o=>o.source==='store'));
-  const changed=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing'});
+  rejectOrderReads=1;
+  assert.equal((await send({action:'admin_orders',adminToken,page:0,source:'all'})).status,200,'read-only RPC retries PGRST303');
+  for(const trackingId of [undefined,'','   ','x'.repeat(121),'bad\ntracking']){
+    const count=databaseCalls.length;
+    assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId})).status,400);
+    assert.equal(databaseCalls.length,count,'invalid tracking must not reach the database');
+  }
+  const changed=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId:' TRACK-123 '});
   assert.equal(changed.status,200);
   assert.equal((await changed.json()).fulfillmentStatus,'shipped');
   assert.equal(orders[1].status,'processing','payment and bot status must remain unchanged');
-  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:1,status:'shipped',previousStatus:'processing'})).status,409);
+  assert.equal(orders[1].tracking_id,'TRACK-123');
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:1,status:'shipped',previousStatus:'processing',trackingId:'TRACK-123'})).status,409);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'completed',previousStatus:'processing'})).status,409);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'unknown',previousStatus:'shipped'})).status,400);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken:'invalid',id:2,status:'completed',previousStatus:'shipped'})).status,403);

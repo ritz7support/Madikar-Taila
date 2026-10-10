@@ -1,4 +1,4 @@
-# Website checkout — updated 8 October 2026
+# Website checkout — updated 10 October 2026
 
 Website checkout is enabled with **zero shipping**, approved by the owner on 30 September 2026. `public.store_checkout_settings.enabled=true` and `shipping_paise=0`; customers pay only the selected product total. The last verified Supabase RAZORPAY_MODE was test; read the current configuration before payment analysis. Repository consolidation does not change it. Real-money collection remains subject to the shared mode and live-payment verification. Bot functions, settings and secrets remain untouched.
 
@@ -32,6 +32,8 @@ Both test and live captured website payments send the existing n8n `order.paid` 
 4. Website settings are enabled. Do not change the shared payment mode without the owner’s direction and consideration for the bot. Razorpay refunds/disputes and automatic abandoned-session retention cleanup are not implemented in this phase.
 
 ## Protected bot boundary
+
+Admin order stages are separate from `orders.status`: staff edit `fulfillment_status` only. As of 10 October, selecting Shipped requires a courier tracking ID, saved atomically in `orders.tracking_id` and displayed in order details. The database also requires tracking when setting Shipped manually. Tracking is retained on later stage changes; shipping this way sends no customer message. Admin payment labels use payment state and do not label processing orders as processing payments. `store_admin_orders_page` returns each 20-order page and its related records through the authenticated admin backend in one database request; it is executable by service_role only.
 
 Always preserve bot functioning. Never redeploy the five bot functions, edit `_shared/order-handoff.ts`, alter bot RPCs/grants/jobs, rotate secrets or overwrite existing customer/default-address data as part of website checkout. Deploy only `madikar-store` by name. The old `website/server/supabase-store-function.js` and `website/db/orders_integration.sql` are historical and must not be deployed/applied.
 
