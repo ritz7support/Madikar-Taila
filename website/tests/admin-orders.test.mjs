@@ -115,3 +115,16 @@ test('delivery estimate rejects non-positive or fractional days and allows unkno
   assert.equal(h.node('#order-delivery-25').textContent,'');
   assert.equal(select.value,'shipped');
 });
+
+test('shipping-message feedback exposes safe retry and blocks retry for accepted or uncertain sends',()=>{
+  const h=harness();
+  h.context.order={id:25,fulfillment_status:'shipped',estimated_delivery_days:5,shipment_notification:{status:'failed',error_code:132001,attempts:1}};
+  let html=vm.runInContext('shipmentMessage(order)',h.context);
+  assert.match(html,/Retry after approval/);assert.match(html,/data-retry-shipment/);
+  for(const status of ['sent','uncertain']){
+    h.context.order.shipment_notification.status=status;
+    html=vm.runInContext('shipmentMessage(order)',h.context);assert.doesNotMatch(html,/data-retry-shipment/);
+  }
+  h.context.order.shipment_notification=null;h.context.order.estimated_delivery_days=null;
+  assert.match(vm.runInContext('shipmentMessage(order)',h.context),/data-edit-shipment/);
+});

@@ -60,7 +60,7 @@
       <input id="tracking-id" name="trackingId" type="text" required maxlength="120" autocomplete="off">
       <label for="delivery-days" class="delivery-days-label">Estimated delivery (days)</label>
       <input id="delivery-days" name="estimatedDeliveryDays" type="number" min="1" max="2147483647" step="1" placeholder="e.g. 5" aria-describedby="delivery-days-help">
-      <p id="delivery-days-help" class="help">Number of days after dispatch. Leave blank if unknown.</p>
+      <p id="delivery-days-help" class="help">Number of days after dispatch. Enter this to send the customer a WhatsApp shipping update. Leave blank to save the shipment without a message.</p>
       <p id="shipping-error" class="status" data-tone="error" role="alert"></p>
       <div class="shipping-actions"><button type="button" id="shipping-cancel">Cancel</button><button type="submit" id="shipping-save" class="primary">Save & mark Shipped</button></div>
     </form>

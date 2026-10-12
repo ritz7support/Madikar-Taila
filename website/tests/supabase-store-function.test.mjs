@@ -9,7 +9,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   const publicJwk = pair.publicKey.export({format:'jwk'});
   const privateJwk = pair.privateKey.export({format:'jwk'});
   const adminToken='a'.repeat(43);
-  const source = readFileSync(new URL('../../supabase/functions/madikar-store/index.ts',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'')
+  const source = readFileSync(new URL('../../supabase/functions/madikar-store/index.ts',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'')
     .replace(/const PUBLIC_KEYS = \[[\s\S]*?\];/,`const PUBLIC_KEYS = [${JSON.stringify(publicJwk)}];`)
     .replace(/const ADMIN_LINK_HASH = '[a-f0-9]{64}';/,`const ADMIN_LINK_HASH = '${createHash('sha256').update(adminToken).digest('hex')}';`);
   let handler;
@@ -20,8 +20,13 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     status:index===0?'pending_payment':'processing',fulfillment_status:'processing',created_at:'2026-10-07T00:00:00Z',
     total:175,subtotal:175,shipping:0,profile_id:null,address_id:null}));
   const databaseCalls = [];
+  const shipmentWork=[],shipmentRetries=[];
+  const notifications=new Map();
   const sandbox = {
-    createCheckoutService:()=>({}),
+    createCheckoutService:()=>({authorizeRecovery:async token=>token==='recovery-token'}),
+    createShipmentNotificationService:()=>({work:async id=>{shipmentWork.push(id);return {checked:0}},
+      view:async id=>notifications.get(Number(id)) || null,retry:async id=>{shipmentRetries.push(id)}}),
+    EdgeRuntime:{waitUntil:promise=>promise.catch(()=>{})},
     Deno:{env:{get:key => ({SUPABASE_URL:'https://supabase.example',SUPABASE_SECRET_KEYS:JSON.stringify({default:'sb_secret_test'})})[key]},serve:fn => {handler=fn}},
     crypto:webcrypto, TextEncoder, Response, Request, URL, atob, AbortSignal, Date, setTimeout,
     console:{error:() => {}},
@@ -54,6 +59,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
           const order=orders.find(o=>String(o.id)===query.get('id')?.slice(3));
           if (!order || order.status==='pending_payment' || order.fulfillment_status!==query.get('fulfillment_status')?.slice(3)) return Response.json([]);
           Object.assign(order,JSON.parse(options.body));
+          if(order.fulfillment_status==='shipped'&&order.estimated_delivery_days)notifications.set(order.id,{status:'pending',attempts:0});
           return Response.json([order]);
         }
         const source=query.get('source')?.slice(3);
@@ -142,6 +148,15 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   assert.equal(orders[1].status,'processing','payment and bot status must remain unchanged');
   assert.equal(orders[1].tracking_id,'TRACK-123');
   assert.equal(orders[1].estimated_delivery_days,5);
+  assert.ok(shipmentWork.includes(2),'shipment sends are scheduled after successful save');
+  assert.equal((await (await send({action:'admin_shipment_notification',adminToken,id:2})).json()).shipmentNotification.status,'pending');
+  assert.equal((await send({action:'admin_retry_shipment_notification',adminToken,id:2})).status,200);
+  assert.deepEqual(shipmentRetries,['2']);
+  assert.equal((await send({action:'admin_retry_shipment_notification',adminToken:'invalid',id:2})).status,403);
+  assert.equal(shipmentRetries.length,1);
+  const unauthorizedRecovery=await handler(new Request(endpoint+'/shipment-recovery',{method:'POST'}));
+  assert.equal(unauthorizedRecovery.status,401);
+  assert.equal((await handler(new Request(endpoint+'/shipment-recovery',{method:'POST',headers:{'x-checkout-recovery':'recovery-token'}}))).status,200);
   const legacyShipment=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'shipped',trackingId:'TRACK-123'});
   assert.equal((await legacyShipment.json()).estimatedDeliveryDays,5,'old admin clients preserve saved estimates');
   const clearedShipment=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'shipped',trackingId:'TRACK-123',estimatedDeliveryDays:null});

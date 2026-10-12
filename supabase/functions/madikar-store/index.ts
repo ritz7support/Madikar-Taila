@@ -1,4 +1,5 @@
 import { createCheckoutService } from './checkout.ts';
+import { createShipmentNotificationService } from './shipment.ts';
 // Deployed as the madikar-store Supabase Edge Function.
 // The existing Sites Worker and Vercel each hold a separate private signing key.
 const PUBLIC_KEYS = [
@@ -183,8 +184,19 @@ async function adminAction(body) {
     });
     const order = response.payload?.[0];
     if (!order) throw Object.assign(new Error('Order changed or is awaiting payment. Refresh orders and try again.'),{status:409});
+    if (stage === 'shipped' && order.estimated_delivery_days) scheduleShipmentNotification(order.id);
     return {id:order.id,fulfillmentStatus:order.fulfillment_status,trackingId:order.tracking_id || null,
-      estimatedDeliveryDays:order.estimated_delivery_days ?? null};
+      estimatedDeliveryDays:order.estimated_delivery_days ?? null,
+      ...(stage==='shipped'?{shipmentNotification:await shipmentService.view(order.id).catch(()=>null)}:{})};
+  }
+  if (body.action === 'admin_shipment_notification' || body.action === 'admin_retry_shipment_notification') {
+    const id=adminId(body.id);
+    if (!id) throw Object.assign(new Error('Invalid order'),{status:400});
+    if (body.action === 'admin_retry_shipment_notification') {
+      await shipmentService.retry(id);
+      scheduleShipmentNotification(id);
+    }
+    return {shipmentNotification:await shipmentService.view(id)};
   }
   if (body.action === 'admin_save_product') {
     const product = await storeProduct(body.id);
@@ -261,10 +273,20 @@ async function adminAction(body) {
 }
 
 const checkoutService = createCheckoutService({database,env:key=>Deno.env.get(key),background:promise=>EdgeRuntime.waitUntil(promise)});
+const shipmentService = createShipmentNotificationService({database,env:key=>Deno.env.get(key)});
+function scheduleShipmentNotification(orderId){
+  EdgeRuntime.waitUntil(shipmentService.work(orderId).catch(()=>console.error('Shipment notification will be reconciled by recovery.')));
+}
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return result({error:'Method not allowed'},405);
   const path = new URL(request.url).pathname;
+  if (path.endsWith('/shipment-recovery')) {
+    try {
+      if (!await checkoutService.authorizeRecovery(request.headers.get('x-checkout-recovery'))) return result({error:'Unauthorized'},401);
+      return result(await shipmentService.work());
+    } catch { return result({error:'Shipment recovery temporarily unavailable'},503); }
+  }
   if (path.endsWith('/checkout-recovery')) {
     try {
       if (!await checkoutService.authorizeRecovery(request.headers.get('x-checkout-recovery'))) return result({error:'Unauthorized'},401);
