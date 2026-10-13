@@ -1,10 +1,16 @@
 # Madikar Taila — Project Instructions
 
-Last updated: 1 October 2026.
+Last updated: 13 October 2026.
 
-Latest checkpoint: main consolidates the bot and website. Start with PROJECT_HANDOFF.md. Sites version 24 is public; madikar-store v10 matches deployed source. Preserve both public signing keys, the bot help-line update and all local outputs.
+## Current next-chat scope — variant retailer IDs
 
-These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. Completed bot and website work is consolidated on `main`; create new `codex/` work branches from current main. The older `cursor/production-hardening` branch is retained as bot work history.
+Read PROJECT_HANDOFF.md and docs/plans/VARIANT_RETAILER_IDS.md first. The owner chose nullable retailer_id on each existing ProductVariant instead of adding 14 hidden Product records. The old insertion proposal is superseded and never applied. Phase 1 adds/backfills verified Meta IDs while preserving all current Product rows, 94 variants and runtime behavior. Do not delete existing lookup rows, overwrite parent IDs or invoke full catalog sync. Bot lookup, website item IDs and sync adoption are a separate Phase 2.
+
+The handoff branch codex/variant-retailer-id-plan includes the latest code baseline ae53bb4. Main was at the older 4769c08 checkpoint when inspected; preserve subsequent admin/shipment changes. Latest recorded Site is version 31 and madikar-store v15. Older sections below are dated history; PROJECT_HANDOFF.md governs the current task. This planning chat changes documentation only.
+
+Start with PROJECT_HANDOFF.md for the latest checkpoint. Preserve both public signing keys, the bot help-line update and all local outputs.
+
+These instructions are for any coding agent or editor working in this repo (Cursor, Claude Code, Codex, and others). Nothing here depends on a particular tool. Create new `codex/` work branches from the latest verified baseline identified in PROJECT_HANDOFF.md after inspecting current history; do not lose newer work by assuming main is up to date. The older `cursor/production-hardening` branch is retained as bot work history.
 
 ## Monorepo boundary
 

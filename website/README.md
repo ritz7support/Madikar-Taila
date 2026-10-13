@@ -1,15 +1,15 @@
 # Madikar Taila website source
 
-Canonical development source. Published Site: appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com, version 28. Sites source commit: 34dbdfa6001ef3f07c9828429ea5e4d56d1507f0. The Sites repository is a publishing mirror; reconcile the existing Site before editing, and preserve its project ID and audience. The latest admin orders work is on codex/admin-orders-management; review branch history before starting new work from main.
+Canonical development source. Latest recorded Site: appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com, version 31. Sites commit: acedd13d7cd3acce09e18d800f402b46b30a4fbf. The Sites repository is a publishing mirror; reconcile it before editing and preserve its project ID/audience. Latest handoff is codex/variant-retailer-id-plan, based on ae53bb4; inspect history and preserve current work because main was older when checked.
 
-Read ../PROJECT_HANDOFF.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. Checkout is enabled with zero shipping and UPI-only choices; both test/live captured payments send n8n and the approved WhatsApp template. madikar-store v12 is the current website backend. See the handoff for remaining verification gaps.
+Read ../PROJECT_HANDOFF.md, ../docs/plans/VARIANT_RETAILER_IDS.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. Next task is Phase 1 variant retailer-ID metadata/backfill with runtime unchanged; the hidden-row proposal is superseded. Checkout remains zero shipping and UPI-only; both modes send n8n and the existing confirmation template after verified capture. Current website backend inventory remains madikar-store v15. No deployment/publication occurred in the planning chat.
 
 ## Layout and checks
 
 - dist/client/ is editable source, including storefront, checkout, policy/admin pages, CSS and assets.
 - server/worker-template.js builds into dist/server/index.js. Run npm run build here.
 - Run npm test here for all current frontend, Worker, backend auth/catalog, checkout and confirmation tests. They use mocks; no customer messages or charges.
-- ../supabase/functions/madikar-store/{index,checkout,confirmation}.ts is the current deployed backend source.
+- ../supabase/functions/madikar-store/{index,checkout,confirmation,shipment}.ts is the canonical backend source.
 - db/ and server/supabase-store-function.js are historical references. Do not apply/deploy them over live. Current migrations belong in ../supabase/migrations/.
 - The hero-wide-bottle.webp asset supplies desktop panoramic framing; the original image remains used on mobile.
 

@@ -1,6 +1,10 @@
 # WhatsApp Flow App — Error & Prevention Guide
 
-Last reviewed: 30 September 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale). Historical incidents retain their original dates; see §14 for the earlier checked bot baseline and `WEBSITE_HANDOFF.md` for the current checkpoint.
+Last reviewed: 13 October 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale). Historical incidents retain their original dates; use PROJECT_HANDOFF.md for the current baseline.
+
+## Variant retailer-ID work — planning checkpoint
+
+Read docs/plans/VARIANT_RETAILER_IDS.md before the next catalog change. The selected model adds retailer_id to existing ProductVariant; the 14-hidden-row insertion proposal is superseded. Phase 1 is additive metadata/backfill only and must leave bot/website consumers untouched. Preserve parent IDs, existing lookups and all current team data. Freshly fetch every Meta page and verify parent/group/size mappings; do not assume incoming WhatsApp items always include size or guess IDs from product names/prices. The current sync writes/deletes Product rows and is not a variant backfill tool. Do not call Meta synchronously per cart item. Variant-aware lookup, website item IDs and manual sync need separate compatibility tests and retained legacy fallbacks in Phase 2.
 
 **Manual-edit reconciliation, 30 Sep:** the owner added `Need help with your order? Contact us at 99722 67897.` to the live Razorpay payment-confirmation message. Complete `razorpay-webhook` v32 source was retrieved and copied into the local branch; the shared handoff module matches and was not changed. The outbound JSON reference was updated. This was a source synchronization, with no deployment, secret change or live payment test. Preserve the change when resuming website work.
 

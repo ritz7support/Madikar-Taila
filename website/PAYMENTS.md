@@ -1,4 +1,8 @@
-# Website checkout — updated 12 October 2026
+# Website checkout — updated 13 October 2026
+
+## Planned variant IDs — preserve payment behavior
+
+The owner selected a future nullable ProductVariant.retailer_id and verified Meta backfill; see ../docs/plans/VARIANT_RETAILER_IDS.md. This planning chat changes no database/runtime. Phase 1 leaves checkout and bot unchanged. Website quote creation currently stores Product.retailer_id for every selected pack; preferring the verified variant ID with parent fallback is a separate Phase 2, with historical order-item IDs preserved. Do not apply the superseded hidden-row proposal or change amounts, prices, shipping, modes/secrets, payment verification, references, confirmation templates or shipment messages during the metadata work.
 
 Website checkout is enabled with **zero shipping**, approved by the owner on 30 September 2026. `public.store_checkout_settings.enabled=true` and `shipping_paise=0`; customers pay only the selected product total. The last verified Supabase RAZORPAY_MODE was test; read the current configuration before payment analysis. Repository consolidation does not change it. Real-money collection remains subject to the shared mode and live-payment verification. Bot functions, settings and secrets remain untouched.
 

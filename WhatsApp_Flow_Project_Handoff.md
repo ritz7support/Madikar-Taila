@@ -1,6 +1,10 @@
 # WhatsApp Flow App — Project Handoff
 
-Last reviewed: 1 October 2026. Start with PROJECT_HANDOFF.md for the consolidated main baseline, current function counters and website version 24. All bot function sources match live. The owner-authored Razorpay help-line change is included. Older deployment counters and continuation prompts below are dated history; no bot runtime was changed during consolidation.
+Last reviewed: 13 October 2026. Start with PROJECT_HANDOFF.md and docs/plans/VARIANT_RETAILER_IDS.md. Current inventory remains whatsapp-webhook 94, whatsapp-flow 50, razorpay-webhook 33, sync-meta-catalog 11 and retry-order-handoffs 6, with audit hashes unchanged; website madikar-store remains 15 and the latest recorded Site is 31. Preserve the owner-authored Razorpay help-line and later admin/shipment work. Older counters, row counts and continuation prompts below are dated history.
+
+## Current next-chat task
+
+The owner chose retailer_id on each existing ProductVariant. This chat updates documentation only; no database/runtime changes. Phase 1 adds/backfills verified IDs from a fresh full Meta read while preserving parent Product IDs, all 17 existing lookup rows, 94 variants and current bot behavior. The proposed insertion of 14 more hidden rows is superseded. The bot currently reads Product, not ProductVariant; migrating that lookup with legacy fallback is separate Phase 2. Do not invoke full catalog sync, change incoming WhatsApp prices or edit payment/order_status, registration, address, shipment messages or courier shipping as a side effect. Use the plan's companion new-chat prompt rather than older prompts below.
 
 ## 1. Source-of-truth rules
 

@@ -1,6 +1,15 @@
 # Madikar Taila — project analysis starting point
 
-Updated 12 October 2026. The consolidated main baseline has follow-ups on codex/variant-shipping-weights (optional admin shipping weights), codex/admin-ui-refresh (UI only), codex/admin-orders-management (admin order workflow), codex/unified-order-references (website references), codex/admin-tracking-and-loading (admin fixes), codex/admin-delivery-estimate (shipment estimate), and codex/admin-shipment-messages (current shipping notifications). Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve any newer work. The older codex/website and cursor/production-hardening branches remain as history.
+Updated 13 October 2026. The latest handoff is on codex/variant-retailer-id-plan, based on ae53bb4 from codex/admin-shipment-messages. Local main and origin/main were still at 4769c08 when inspected and lack the subsequent weights/admin/reference/shipment work. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve the latest checkout and newer work rather than resetting to the older main baseline. The older codex/website and cursor/production-hardening branches remain as history.
+
+## 13 October variant retailer-ID plan and next-chat handoff
+
+- The owner chose one Meta retailer ID per existing ProductVariant. Read docs/plans/VARIANT_RETAILER_IDS.md and its NEW_CHAT_PROMPT companion. This chat prepares documentation only: no schema/data changes, existing function deployment, payment or customer message. The earlier proposal to add 14 hidden Product lookup rows is superseded and must not be applied.
+- Live read at 22:31 IST: 76 Product rows, 59 website parents, 17 additional rows without store_id and 94 variants; ProductVariant.retailer_id is absent. Four new packs are Sesame 500 ml (116), Sesame 200 ml (117), Flax seed 200 ml (118) and Niger/Huchellu 200 ml (119). Preserve current team values. Sixteen legacy lookup rows are flagged active but still excluded by the website/admin store_id filter; do not change those flags incidentally.
+- Phase 1 next chat: fetch the entire current Meta catalog securely, add nullable text ProductVariant.retailer_id with nonblank/unique populated values, and backfill only verified mappings. Preserve parent IDs, legacy lookup records, all existing variant fields, orders and security. Keep bot/website runtime unchanged. Phase 2 is a separate compatibility change for bot lookup, website item IDs and manual sync; the column alone does not change current consumers.
+- The 12 October report found 87 Meta items, 87 verified variant mappings, three packs absent from Meta and 14 missing Product lookup IDs. All paired prices/availability agreed. The owner is adding Mango pickle 200 g, Rose soap and Panchagavya four-pack manually; refresh their Meta presence. Content/metadata reconciliation, courier calculations and the whole-project audit remain deferred.
+- Evidence: outputs/catalog-audit-20261012/, outputs/catalog-repair-20261013/ and outputs/variant-retailer-id-plan-20261013/read-only-checkpoint.json. The audit reader was removed. Any future reader must be isolated, authenticated, expiring, GET-only and removed afterward. Do not invoke the current sync-meta-catalog for backfill.
+- Live function inventory still matches the audit hashes: whatsapp-webhook 94, whatsapp-flow 50, razorpay-webhook 33, sync-meta-catalog 11, retry-order-handoffs 6 and madikar-store 15. Latest recorded Site is version 31; no publication occurred in this planning chat.
 
 ## 12 October shipment notification update
 
@@ -43,6 +52,8 @@ Updated 12 October 2026. The consolidated main baseline has follow-ups on codex/
 
 ## Read first
 
+For the next task, read docs/plans/VARIANT_RETAILER_IDS.md and docs/plans/VARIANT_RETAILER_IDS_NEW_CHAT_PROMPT.md, then the references below.
+
 1. Project_Instructions.md — repository workflow and boundaries.
 2. BOT_BACKEND_DO_NOT_TOUCH.md — live bot protection rules.
 3. WEBSITE_HANDOFF.md and website/README.md — current storefront and publication.
@@ -56,7 +67,7 @@ Updated 12 October 2026. The consolidated main baseline has follow-ups on codex/
 - website/dist/client and the Worker source/build match the version-26 publishing mirror. GitHub documentation may be newer than the published Site. Version 26 changes only admin.html, admin.css and the rendering markup in admin.js: clearer layout, labeled Add pack fields, mobile pack cards and order styling. No handlers, API requests, validation, authentication or backend behavior changed. No Supabase writes/deployments were performed for this UI refresh.
 - Supabase faoomjgkofqrdajaftjd (ap-south-1): madikar-store v12 (7 October); bot versions last inspected 1 October were whatsapp-webhook v94, whatsapp-flow v50, razorpay-webhook v33, sync-meta-catalog v11, retry-order-handoffs v6. Bot functions and shared code were not changed or deployed for weights or admin orders. Counters can drift without source changes.
 - Preserve the current website backend's two public signing keys (commented as Sites and Vercel). Vercel deployment/source was not independently reviewed in this consolidation; do not remove the second key or assume it is unused.
-- 59 website products / 90 variants across nine categories; all variants made available on 1 October. Inventory counts are NULL (untracked), not invented quantities. ProductVariant.product_name mirrors the parent display name. Seventeen additional Meta lookup rows stay hidden.
+- 59 website products / 94 variants as checked 13 October, including four new team-added packs. The 1 October availability update affected the then-existing 90 variants. Inventory counts remain untracked. ProductVariant.product_name mirrors the parent display name. Seventeen additional Meta lookup rows lack store_id and remain excluded from website/admin listings.
 - ProductVariant.shipping_weight_grams is now nullable positive integer metadata, editable in the existing admin pack table and Add pack form. Weights were initially NULL for the team to enter; the owner has since confirmed saving the Groundnut Oil 500 ml weight successfully. Preserve team-entered values. No outer delivery packaging allowance. Migration 20261005172819_add_variant_shipping_weight_grams is applied; do not replay it.
 - Checkout: UPI-only display, zero shipping, mode selected by the shared RAZORPAY_MODE secret. All delivery fields mandatory except email and landmark. Orders/items/payment/address are recorded atomically after verified capture. Website address source is website_checkout and does not replace saved bot addresses.
 - Both test and live payments trigger n8n and the approved website_payment_confirmation WhatsApp template (en; no buttons/placeholders), plus the on-screen confirmation. The delivery header is hidden in the success popup; close and Continue shopping return home.
@@ -88,5 +99,9 @@ Updated 12 October 2026. The consolidated main baseline has follow-ups on codex/
 outputs/ contains backups, customer/data snapshots, source downloads and generated artifacts. It is deliberately ignored and remains on disk; do not upload it wholesale. Main-checkout evidence lives under D:/cursor projects/Madikar taila/outputs/. Additional website checkout, template, hero and publication artifacts remain at C:/Users/ciphe/.codex/worktrees/2d55/Madikar taila/outputs/. Temporary Sites repositories and tar archives remain local and are not canonical source. Do not delete/archive that worktree before preserving any evidence needed for analysis. Do not copy its older website/ or draft migration timestamps over main.
 
 ## Suggested next-chat request
+
+Use docs/plans/VARIANT_RETAILER_IDS_NEW_CHAT_PROMPT.md for Phase 1 of the retailer-ID plan. The wider analysis request below remains deferred and is not the next task.
+
+### Deferred wider analysis request
 
 Analyze the entire Madikar Taila project in D:/cursor projects/Madikar taila on main. Read PROJECT_HANDOFF.md and its Read first files. Inspect current Git status and deployed state where needed. Produce a prioritized architecture, correctness, security, payment reliability and maintainability assessment with evidence. Do not make changes, deploy, send messages or process payments unless I ask. Always preserve bot functioning and all existing local work.
