@@ -16,7 +16,7 @@ Files under `docs/catalog/`:
 - `One_Rupee_Test_Prices.md`: five Meta ₹1 items, four of which also cost ₹1 on the website; intended live-price and restoration checkboxes are left for the owner.
 - `Catalog_Guide_and_Mapping_Audit.md`: import guidance and all 95 item mappings.
 
-The CSV is a snapshot/editing base, **not a verified blanket replacement import**. Twenty-six items lack brand/GTIN/MPN; do not invent those values. Current image URLs are signed Meta CDN URLs and may expire. Refresh them or supply approved persistent image URLs before a later upload. Manual/feed ownership must be checked in Commerce Manager. No import, ownership transfer or deletion mode was exercised. Forty-seven API fields were requested; raw API/system metadata and empty/default attributes are retained in the local JSON evidence rather than misrepresented as feed columns.
+The CSV is a snapshot/editing base, **not a verified blanket replacement import**. Twenty-six items lack brand/GTIN/MPN; do not invent those values. Twenty-nine image URLs are signed Meta CDN URLs and may expire; 66 are existing Google Drive links requiring continued public access. Refresh them or supply approved persistent image URLs before a later upload. Manual/feed ownership must be checked in Commerce Manager. No import, ownership transfer or deletion mode was exercised. Forty-seven API fields were requested; raw API/system metadata and empty/default attributes are retained in the local JSON evidence rather than misrepresented as feed columns.
 
 ## Deployed behavior
 
