@@ -1,5 +1,11 @@
 # Website checkout — updated 14 October 2026
 
+## Owner-performed live payment check — 14 October
+
+The owner's live ₹1 website purchase (order 170, Coconut 200 ml, variant 9 / 7bcdpj5v7b) passed provider/API, database and log verification. Razorpay confirms captured UPI, 100 paise, paid order and zero amount due; the exact item ID/price persisted. The paid session/order have one payment, successful first-attempt n8n handoff and first-attempt Meta confirmation acceptance. Website address isolation is preserved. The WhatsApp ₹1 test also succeeded. Read ../docs/plans/LIVE_PAYMENT_AUDIT_2026-10-14.md for evidence, a separate existing bot payment-metadata defect and verification limits. This confirms the successful live callback path; closed-browser recovery and other outstanding scenarios remain separate.
+
+Fresh catalog verification now finds 94 matching Meta/database variants and no price differences. Mustard 200 ml is ₹90 and Jaggery 1 kg ₹85 in both systems. Four deliberate ₹1 packs remain; use the updated checklist. Older counts and price discrepancies below describe the deployment-time checkpoint.
+
 ## Variant identity deployed — 14 October 2026
 
 The owner approved deployment of the tested compatibility patch: madikar-store v16 records the selected ProductVariant.retailer_id in new session items, falling back to Product.retailer_id only when unmapped. All 94 current variants have verified IDs. Prices still come from the selected server-side variant; historical sessions/orders retain their snapshots. whatsapp-webhook v95 independently resolves exact packs while retaining incoming transaction prices. No payment verification, messages, recovery, modes, keys or amounts were changed. All 56 tests, 94 mocked pack/payment preparations, live identity queries and preservation checks passed. See ../docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md.

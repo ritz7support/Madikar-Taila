@@ -1,5 +1,7 @@
 # Meta catalog guide and mapping audit
 
+**Later verification, 14 October at 23:43 IST:** the catalog now has 94 items after the owner's Panchagavya removal. Mustard 200 ml is ₹90 and Jaggery 1 kg ₹85, matching Supabase. The CSV and item table below preserve the earlier 22:39 snapshot; **do not upload that historical CSV unchanged**. See ../plans/LIVE_PAYMENT_AUDIT_2026-10-14.md and the updated One_Rupee_Test_Prices.md. No CSV was uploaded during verification.
+
 Snapshot: 14 October 2026 at 10:39:34 pm IST. Catalog 1515875913870520. All 95 current Meta items were read across 3 pages, with matching before/after product counts and unique item IDs. The CSV includes items originally entered manually and by feed. No Meta item was changed or uploaded.
 
 ## Files and editing
