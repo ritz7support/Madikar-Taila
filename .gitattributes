@@ -1,0 +1,2 @@
+# Preserve exported feed bytes, including embedded description newlines and BOM.
+docs/catalog/*.csv -text

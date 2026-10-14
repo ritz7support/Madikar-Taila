@@ -1,6 +1,12 @@
 # Product catalog schema — current checkpoint 14 October 2026
 
-## Variant retailer IDs — Phase 1 applied
+## Current variant identity — 14 October 2026
+
+All 94 current variants have unique populated retailer IDs verified against a fresh 95-item Meta snapshot. There are 75 Product rows: 59 website parents and 16 legacy lookups. The owner filled seven IDs after Phase 1 and separately removed Panchagavya four-pack variant 105 / inactive lookup 81; parent 80 and single Bar 104 remain. No current data changed during the compatibility patch. Generated Meta item dg4i4tvblo remains unassigned.
+
+whatsapp-webhook v95 now resolves catalog-scoped variant IDs through the existing parent, retaining legacy/incoming fallbacks. madikar-store v16 prefers variant IDs for new quote snapshots, with parent fallback. Product retailer IDs remain compatibility fields. Prices, availability, weights and historical orders are unchanged; manual sync remains deferred and must not be invoked. See docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md and docs/catalog/ for the complete export, mapping and test-price checklist.
+
+## Variant retailer IDs — Phase 1 applied (history)
 
 Migration 20261014120349_add_verified_variant_retailer_ids adds nullable text ProductVariant.retailer_id, rejecting blank/surrounding-whitespace values and uniquely indexing populated IDs. Exact spelling/case is retained; NULL means unverified/unlisted. All current parents use catalog 1515875913870520; review uniqueness before multiple-catalog adoption. Exactly 87 variants are mapped and eight remain NULL. Product retailer IDs, lookup rows and runtime are unchanged. See docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. Bot/website/sync adoption is separate Phase 2; the superseded 14-hidden-row insertion was not applied.
 
@@ -14,7 +20,7 @@ The existing admin variant editor and Add pack form now accept Shipping weight (
 
 This is metadata entry only: website and WhatsApp shipping remain zero, and public catalog, checkout, payments, bot handlers and Meta sync are unchanged. Courier rules and the runtime Meta retailer-ID-to-variant mapping remain a later phase. Historical reconciliation mappings are evidence to verify, not an active database relationship. Latest publication: Sites version 25 and madikar-store v11. The older checkpoints below remain historical.
 
-**Current:** 59 website parents, 95 variants and 17 extra Meta lookup rows without store_id. ProductVariant.product_name follows its parent; inventory remains untracked. Latest checkpoint and retailer-ID result are above and in PROJECT_HANDOFF.md. The dated September/October release counts below are history; statements that only eight products are visible or product pages are pending are superseded.
+**Current:** 59 website parents, 94 variants and 16 extra Meta lookup rows without store_id. ProductVariant.product_name follows its parent; inventory remains untracked. Latest checkpoint and retailer-ID result are above and in PROJECT_HANDOFF.md. The dated September/October release counts below are history; statements that only eight products are visible or product pages are pending are superseded.
 
 **30 September continuation checkpoint (history):** All 59 canonical website groups were made visible across the nine categories below; the then-current 90 variants and 59 bucket image links were served through `madikar-store` v5. The 17 additional Meta lookup rows remained hidden. Sites version 15 introduced `/products/<slug>` pages and browser redirects for old `/?product=<store_id>` links. The three optional detail fields were left empty and hidden by owner choice. Use the 13 October checkpoint above and `WEBSITE_HANDOFF.md` for current counts and versions.
 

@@ -324,10 +324,24 @@ function moneyValue(amount:number){
   return {value:Math.round(amount*100),offset:100};
 }
 
-async function getExistingProductByRetailerId(id:string){
-  const r=await db(`/rest/v1/Product?select=retailer_id,name,description,product_link,catalog_id&retailer_id=eq.${encodeURIComponent(id)}&catalog_id=eq.${encodeURIComponent(CATALOG_ID)}&limit=1`);
+async function getExistingProductByRetailerId(id:string,catalogId:string=CATALOG_ID){
+  const filter=(value:string)=>encodeURIComponent(value);
+  const variantResponse=await db(`/rest/v1/ProductVariant?select=id,product_id,retailer_id,size,parent:Product!inner(id,name,description,product_link,catalog_id)&retailer_id=eq.${filter(id)}&parent.catalog_id=eq.${filter(catalogId)}&limit=2`);
+  if(!variantResponse.ok)throw new Error(`Variant lookup failed: ${await variantResponse.text()}`);
+  const variants=await variantResponse.json();
+  if(!Array.isArray(variants)||variants.length>1)throw new Error("Ambiguous variant retailer ID");
+  if(variants[0]){
+    const variant=variants[0],parent=variant.parent;
+    if(!parent||parent.id!==variant.product_id||parent.catalog_id!==catalogId||variant.retailer_id!==id)throw new Error("Variant catalog identity mismatch");
+    const name=String(parent.name??"").trim(),size=String(variant.size??"").trim();
+    return {...parent,retailer_id:id,name:name&&size?`${name} (${size})`:name||null};
+  }
+  // Retain lookup compatibility for historical and not-yet-mapped Meta items.
+  const r=await db(`/rest/v1/Product?select=retailer_id,name,description,product_link,catalog_id&retailer_id=eq.${filter(id)}&catalog_id=eq.${filter(catalogId)}&limit=2`);
   if(!r.ok)throw new Error(`Product lookup failed: ${await r.text()}`);
   const rows=await r.json();
+  if(!Array.isArray(rows)||rows.length>1)throw new Error("Ambiguous legacy retailer ID");
+  if(rows[0]&&(rows[0].retailer_id!==id||rows[0].catalog_id!==catalogId))throw new Error("Legacy catalog identity mismatch");
   return rows[0]??null;
 }
 
@@ -560,7 +574,7 @@ async function createOrderFromWhatsAppCart(waId:string,m:any){
     const incomingPrice=Number(raw?.item_price??0);
     const currency=String(raw?.currency??"INR");
     if(!retailerId||!Number.isInteger(quantity)||quantity<=0)throw new Error(`Invalid cart item: ${JSON.stringify(raw)}`);
-    const cachedProduct=await getExistingProductByRetailerId(retailerId);
+    const cachedProduct=await getExistingProductByRetailerId(retailerId,catalogId);
     if(!cachedProduct)console.error("Product missing from local catalogue; using incoming order metadata without Meta API lookup",JSON.stringify({retailer_id:retailerId,catalog_id:catalogId}));
     const unitPrice=incomingPrice;
     const productName=String(cachedProduct?.name??raw?.product_name??raw?.name??"").trim()||null;

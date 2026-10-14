@@ -5,7 +5,7 @@ import {createCheckoutService,validateDelivery} from './checkout.ts';
 const address={name:'Test Buyer',phone:'9000000001',email:'',line1:'1 Test Street',line2:'',city:'Dharwad',state:'Karnataka',postalCode:'580001',country:'India'};
 const body=()=>({sessionId:crypto.randomUUID(),token:'a'.repeat(64),clientHash:'b'.repeat(64),address:{...address},lines:[{id:'p1',variant:0,quantity:2}]});
 const mac=(secret,value)=>createHmac('sha256',secret).update(value).digest('hex');
-function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRetailerId=null}={}){
+function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRetailerId=null,catalogVariants=null}={}){
   const state={calls:[],sessions:[],profiles:existing?[{id:crypto.randomUUID(),whatsAppUserId:'91'+address.phone,name:'Original',email:'original@example.test'}]:[],orders:[],payment:{id:'pay_fixture',order_id:'order_fixture',amount:40000,currency:'INR',status:'captured',method:'upi'},finalized:0,remoteOrders:0,handoffs:[],allowed:true,due:[]};
   const env={RAZORPAY_MODE:mode,RAZORPAY_TEST_KEY_ID:'rzp_test_fixture',RAZORPAY_TEST_KEY_SECRET:'test-secret',RAZORPAY_LIVE_KEY_ID:'rzp_live_fixture',RAZORPAY_LIVE_KEY_SECRET:'live-secret',RAZORPAY_TEST_WEBHOOK_SECRET:'test-hook',RAZORPAY_LIVE_WEBHOOK_SECRET:'live-hook',N8N_WEBHOOK_URL:'https://fulfilment.example.test'};
   const database=async(path,options={})=>{
@@ -14,7 +14,7 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRe
     if(table==='store_checkout_settings')payload=[{enabled,shipping_paise:shipping,recovery_token:'f'.repeat(64)}];
     else if(table==='store_allow_checkout')payload=state.allowed;
     else if(table==='Product')payload=[{id:1,store_id:'p1',name:'Oil',store_name:'Groundnut Oil',retailer_id:'meta-oil',catalog_id:'catalog'}];
-    else if(table==='ProductVariant')payload=[{id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:null,availability_status:'available',retailer_id:variantRetailerId}];
+    else if(table==='ProductVariant')payload=catalogVariants||[{id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:null,availability_status:'available',retailer_id:variantRetailerId}];
     else if(table==='Profile'){
       if(method==='POST')state.profiles.push(data);
       payload=state.profiles.filter(p=>p.whatsAppUserId===url.searchParams.get('whatsAppUserId')?.slice(3));
@@ -74,18 +74,31 @@ test('new profile uses same hidden Auth identity; no address or order before pay
   assert.equal(f.state.profiles[0].whatsAppUserId,'919000000001');assert.equal(f.state.orders.length,0);assert.equal(f.state.calls.some(c=>c.path.includes('/addresses')),false);
 });
 
-test('Phase 1 nullable or mapped pack IDs preserve parent checkout identity, prices and zero shipping',async()=>{
+test('mapped pack identity is preferred with parent fallback, unchanged prices and zero shipping',async()=>{
   for(const variantRetailerId of [null,'Verified-Pack-ID']){
     const f=fixture({shipping:0,variantRetailerId}),b=body();
     const prepared=await f.service.create(b);
     assert.equal(prepared.amountPaise,35000);
-    assert.equal(f.state.sessions[0].items[0].retailerId,'meta-oil');
+    assert.equal(f.state.sessions[0].items[0].retailerId,variantRetailerId||'meta-oil');
     assert.equal(f.state.sessions[0].items[0].variantId,10);
     assert.equal(f.state.sessions[0].items[0].unitPaise,17500);
     assert.equal(f.state.sessions[0].shipping_paise,0);
     assert.equal(f.state.orders.length,0);
     assert.equal(f.state.finalized,0);
   }
+});
+test('different packs of one parent keep distinct IDs and server prices through payment preparation',async()=>{
+  const f=fixture({shipping:0,catalogVariants:[
+    {id:10,product_id:1,position:0,size:'500 ml',price:1,inventory_quantity:null,availability_status:'available',retailer_id:'pack-500'},
+    {id:11,product_id:1,position:1,size:'1 L',price:345,inventory_quantity:null,availability_status:'available',retailer_id:'pack-1000'}
+  ]});
+  const b={...body(),lines:[{id:'p1',variant:0,quantity:2,price:999,retailerId:'forged'},{id:'p1',variant:1,quantity:3,price:1,retailerId:'forged'}]};
+  const result=await f.service.create(b);
+  assert.equal(result.amountPaise,103700);
+  assert.deepEqual(f.state.sessions[0].items.map(i=>[i.variantId,i.retailerId,i.unitPaise,i.quantity]),[[10,'pack-500',100,2],[11,'pack-1000',34500,3]]);
+  assert.equal(f.state.sessions[0].total_paise,103700);
+  assert.equal(f.state.finalized,0);
+  assert.equal(f.state.calls.some(c=>c.path.includes('ProductVariant?select=id,product_id,retailer_id,')),true);
 });
 test('rate limit stops profile creation; invalid carts are rejected',async()=>{
   const f=fixture({existing:false});f.state.allowed=false;await assert.rejects(f.service.create(body()),/Too many/);assert.equal(f.state.calls.some(c=>c.path.startsWith('/auth/')),false);

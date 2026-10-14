@@ -2,7 +2,11 @@
 
 Last reviewed: 14 October 2026.
 
-## Applied Phase 1 variant identity metadata
+## Explicitly authorized variant lookup — 14 October 2026
+
+The owner requested exact pack/payment mapping and explicitly approved deployment of the tested patch. whatsapp-webhook v95 changes only catalog-scoped ProductVariant/parent lookup and its call, retaining legacy Product and incoming metadata fallbacks. Incoming order prices, registration, address flows, payment links, messages and protected RPCs are unchanged. madikar-store v16 separately records variant retailer IDs in new website quotes with parent fallback. Full deployed source parity, 56 mocked tests, 94 live identity checks and unchanged database/security fingerprints are recorded in docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md. Current counts: 94 mapped variants, 59 parents, 16 remaining lookup rows. This narrow authorization does not authorize other bot edits or the current full sync.
+
+## Applied Phase 1 variant identity metadata (history)
 
 ProductVariant.retailer_id is applied with 87 verified IDs and eight NULLs across 95 preserved variants; see docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. The owner deferred three newly generated Meta IDs. The superseded 14-hidden-row insertion was not applied. The bot still reads Product by retailer_id/catalog_id and falls back to incoming metadata; Phase 1 leaves that behavior unchanged.
 

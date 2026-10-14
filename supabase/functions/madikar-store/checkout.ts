@@ -54,7 +54,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
     if(!Array.isArray(raw)||raw.length<1||raw.length>16)fail('Please select between 1 and 16 different products.');
     const [products,variants]=await Promise.all([
       db('/rest/v1/Product?select=id,store_id,store_name,name,retailer_id,catalog_id&store_active=eq.true&store_id=not.is.null&slug=not.is.null'),
-      db('/rest/v1/ProductVariant?select=id,product_id,position,size,price,inventory_quantity,availability_status&order=position.asc,id.asc')
+      db('/rest/v1/ProductVariant?select=id,product_id,retailer_id,position,size,price,inventory_quantity,availability_status&order=position.asc,id.asc')
     ]);
     const seen=new Set();let subtotalPaise=0,catalogId=null;
     const items=raw.map(line=>{
@@ -67,7 +67,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
       if(!Number.isSafeInteger(unitPaise)||unitPaise<100||Math.abs(price-unitPaise)>0.001)fail('Your bag contains an invalid price.');
       if(catalogId!==null&&catalogId!==product.catalog_id)fail('Your bag contains products from different catalogues.');
       catalogId=product.catalog_id;subtotalPaise+=unitPaise*line.quantity;
-      return {productId:product.id,variantId:variant.id,retailerId:product.retailer_id,name:`${product.store_name||product.name} (${variant.size})`,quantity:line.quantity,unitPaise};
+      return {productId:product.id,variantId:variant.id,retailerId:variant.retailer_id||product.retailer_id,name:`${product.store_name||product.name} (${variant.size})`,quantity:line.quantity,unitPaise};
     });
     if(!catalogId||subtotalPaise<100||subtotalPaise>10000000)fail('The order amount is outside the supported range.');
     return {items,subtotalPaise,catalogId};

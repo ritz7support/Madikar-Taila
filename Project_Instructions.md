@@ -2,7 +2,11 @@
 
 Last updated: 14 October 2026.
 
-## Variant retailer IDs — Phase 1 complete, Phase 2 separate
+## Variant identity — current 14 October checkpoint
+
+The order-identity part of Phase 2 is deployed with the owner's explicit approval: whatsapp-webhook v95 and madikar-store v16. The bot resolves catalog-scoped ProductVariant IDs with parent/legacy/incoming fallbacks; website quotes prefer variant IDs with parent fallback. Current 94 variants all map to Meta; 95 Meta items, 59 website parents and 16 legacy lookups. Read PROJECT_HANDOFF.md and docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md. Latest branch is codex/catalog-export-variant-compatibility from be60d37. Preserve existing prices, payment behavior and other protected code. Current manual sync remains unsafe and uninvoked; its redesign is separate. CSV/checklist/audit are in docs/catalog/.
+
+## Variant retailer IDs — Phase 1 checkpoint (history)
 
 Read PROJECT_HANDOFF.md, docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report first. Migration 20261014120349_add_verified_variant_retailer_ids is applied: 87 verified IDs, eight NULLs and 95 existing variants preserved. Fresh Meta read found 90 items; the owner deferred three newly generated IDs. The superseded 14-hidden-row insertion was never applied. Do not delete lookups, overwrite parent IDs, replay the guarded production backfill or invoke current full sync. Runtime is unchanged; bot lookup, website item IDs and sync adoption are separate Phase 2.
 

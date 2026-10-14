@@ -1,6 +1,12 @@
 # Website checkout — updated 14 October 2026
 
-## Applied Phase 1 variant IDs — payment behavior preserved
+## Variant identity deployed — 14 October 2026
+
+The owner approved deployment of the tested compatibility patch: madikar-store v16 records the selected ProductVariant.retailer_id in new session items, falling back to Product.retailer_id only when unmapped. All 94 current variants have verified IDs. Prices still come from the selected server-side variant; historical sessions/orders retain their snapshots. whatsapp-webhook v95 independently resolves exact packs while retaining incoming transaction prices. No payment verification, messages, recovery, modes, keys or amounts were changed. All 56 tests, 94 mocked pack/payment preparations, live identity queries and preservation checks passed. See ../docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md.
+
+Public checkout config after deployment reports ready=true, shippingPaise=0 and mode=live. This is an observation, not a mode change or completed real-payment test. Five Meta items and four website variants remain intentionally ₹1; use ../docs/catalog/One_Rupee_Test_Prices.md before launch. Mustard 200 ml remains ₹1/₹90 and Jaggery 1 kg ₹70/₹85 (Meta/website). Do not silently reconcile prices or invoke current full sync.
+
+## Applied Phase 1 variant IDs — historical checkpoint
 
 Migration 20261014120349_add_verified_variant_retailer_ids is applied with 87 verified IDs and eight NULLs across 95 existing variants. See ../docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. All prior catalog/customer/order/payment fields, security, RPCs, settings/jobs and runtime are unchanged. Forty-nine mocked tests and rollback-only SQL checks passed. Website quote creation still records Product.retailer_id for every pack; preferring variant IDs with parent fallback is separate Phase 2, preserving historical order items. Three newly generated Meta IDs are owner-deferred. Do not replay the backfill, insert superseded hidden rows, replace parent IDs or invoke current full sync. Preserve prices/amounts, zero shipping, secrets/modes, payment verification/references, confirmations and shipment messages.
 
@@ -30,7 +36,7 @@ Both test and live captured website payments send the existing n8n `order.paid` 
 
 ## Before real-money collection
 
-1. Shipping is zero until the owner requests otherwise. Checkout is now enabled in the existing test mode. Confirm delivery coverage and complete the remaining live-payment checks.
+1. Shipping is zero until the owner requests otherwise. Checkout is enabled; the latest observed mode is recorded above. Confirm delivery coverage, restore intentional test prices and complete the remaining live-payment checks.
 2. In Razorpay, add the separate website webhook for `payment.captured` and `order.paid`: `https://faoomjgkofqrdajaftjd.supabase.co/functions/v1/madikar-store/razorpay-webhook`. Use the existing matching mode's webhook secret; do not replace the bot webhook or rotate shared secrets. Registration of this new endpoint has **not** been verified.
 3. Verify automatic payment capture, hosting client-IP header, n8n deduplication and recovery with an approved end-to-end payment. No live charge or real customer message was made in implementation tests. Do not switch the shared `RAZORPAY_MODE` without considering the running bot.
 4. Website settings are enabled. Do not change the shared payment mode without the owner’s direction and consideration for the bot. Razorpay refunds/disputes and automatic abandoned-session retention cleanup are not implemented in this phase.

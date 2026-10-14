@@ -1,6 +1,10 @@
 # Meta retailer IDs on Supabase product variants
 
-Updated 14 October 2026. **Phase 1 is applied and verified** in migration 20261014120349_add_verified_variant_retailer_ids. Exactly 87 existing variants have verified retailer IDs; eight of 95 remain NULL. Bot and website runtime are unchanged. The superseded 14-hidden-row insertion was not applied.
+Updated 14 October 2026. **Phase 1 and the order-identity part of Phase 2 are applied.** The owner later filled seven IDs and explicitly removed the Panchagavya four-pack; all 94 current variants match a fresh 95-item Meta snapshot. Owner-approved whatsapp-webhook v95 and madikar-store v16 use exact variant identities with compatibility fallbacks and unchanged prices/payment behavior. Manual sync redesign remains deferred: do not invoke the current full sync. Read [VARIANT_RETAILER_IDS_PHASE2_REPORT.md](VARIANT_RETAILER_IDS_PHASE2_REPORT.md) and ../catalog/ for the complete CSV, mapping and ₹1 checklist. Latest branch: codex/catalog-export-variant-compatibility from be60d37.
+
+## Phase 1 checkpoint (history)
+
+Phase 1 was applied in migration 20261014120349_add_verified_variant_retailer_ids. It initially assigned 87 IDs with eight NULLs across 95 variants, preserving runtime. The superseded 14-hidden-row insertion was not applied. The following Phase 1 counts are historical and superseded by the checkpoint above.
 
 Read [VARIANT_RETAILER_IDS_PHASE1_REPORT.md](VARIANT_RETAILER_IDS_PHASE1_REPORT.md) for the complete mapping manifest, unmatched tables, checks and local evidence. Fresh Meta pagination returned 90 items across all three pages, matching product_count before/after, with no duplicate IDs. Current database: 76 Product rows, 59 website parents, 17 legacy lookups and 95 variants. New Jaggery powder 500 gms is variant 120; Mango pickle variant 83 is now 300 g. Preserve all current team-entered values.
 
@@ -73,7 +77,9 @@ The following steps describe the completed Phase 1 method. Do not rerun its guar
 
 Phase 1 succeeds when verified IDs are stored on existing variants and existing behavior is preserved. It does not make current bot or website consumers use those IDs yet.
 
-## Phase 2: separate compatibility change
+## Original Phase 2 design — order identity now deployed; sync deferred
+
+The bot and website identity bullets below were implemented and verified on 14 October with explicit owner deployment approval. The before-change descriptions are historical. The manual-sync bullet is still outstanding. Preserve the 16 remaining legacy lookup rows; the four-pack exception was separately owner-authorized. The companion prompt now describes the remaining work.
 
 The current bot lookup reads Product by catalog_id and retailer_id, selecting name/description/product_link. Missing cache data is logged and checkout continues using incoming metadata. Prices come from the incoming WhatsApp order item. The bot does not query ProductVariant; a schema-only change cannot resolve its 14 missing-lookup observations.
 
@@ -84,7 +90,7 @@ After Phase 1 is verified, prepare a separate focused runtime change:
 - Make manual sync variant-aware before using it for normal identity maintenance. Current sync creates/upserts a Product record per Meta item and deletes stale rows. A revised path must use reviewed variant mappings without duplicate parents, automatic regrouping/deletion or price/content changes. Current sync is not the Phase 1 backfill tool.
 - Test mapped/unmapped carts, legacy fallback, catalog scoping, duplicate/ambiguity handling, website item metadata and unchanged payment/order transitions. Inspect full deployed source and deploy only the specifically changed function.
 
-Phase 2 remains separately authorized runtime work, outside the completed Phase 1 implementation. The companion now describes that future work. Preserve all 17 legacy lookup records until separately authorized cleanup proves every consumer and historical reference independent of them. An admin ID field is optional later scope.
+The owner authorized and deployed the order-identity changes; manual sync remains separate. The companion describes remaining work. Preserve the 16 remaining legacy lookup records until separately authorized cleanup proves every consumer and historical reference independent of them. An admin ID field is optional later scope.
 
 ## Original planning scope and outstanding items (history)
 
