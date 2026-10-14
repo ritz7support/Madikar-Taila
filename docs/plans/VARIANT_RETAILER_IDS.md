@@ -1,8 +1,16 @@
 # Meta retailer IDs on Supabase product variants
 
-Updated 13 October 2026. Status: plan only; the owner will move to a new chat before implementation. Store each Meta item's retailer_id on its corresponding existing ProductVariant. The previous proposal to add 14 hidden Product lookup records is superseded and must not be applied.
+Updated 14 October 2026. **Phase 1 is applied and verified** in migration 20261014120349_add_verified_variant_retailer_ids. Exactly 87 existing variants have verified retailer IDs; eight of 95 remain NULL. Bot and website runtime are unchanged. The superseded 14-hidden-row insertion was not applied.
 
-## Current checkpoint
+Read [VARIANT_RETAILER_IDS_PHASE1_REPORT.md](VARIANT_RETAILER_IDS_PHASE1_REPORT.md) for the complete mapping manifest, unmatched tables, checks and local evidence. Fresh Meta pagination returned 90 items across all three pages, matching product_count before/after, with no duplicate IDs. Current database: 76 Product rows, 59 website parents, 17 legacy lookups and 95 variants. New Jaggery powder 500 gms is variant 120; Mango pickle variant 83 is now 300 g. Preserve all current team-entered values.
+
+The owner explicitly deferred generated IDs 3l8f6g8wzz (Mango), lblvc9q42a (Rose) and dg4i4tvblo (Panchagavya), which all omit size. NULL variants are 83, 102, 105, 116, 117, 118, 119 and 120. The five newly added packs have no current Meta counterpart. Eleven populated mappings omit Meta size but retain their revalidated historical item/group/parent/pack identities.
+
+All pre-existing product/variant/customer/order/payment data, security, triggers, protected RPCs, settings/jobs and six existing functions are unchanged. Forty-nine mocked tests and rollback-only live SQL checks passed. The expiring signed GET-only reader was removed and verified 404. No existing function deployment, full sync, Site publication, customer message or order/payment processing occurred. Shipping remains zero. Three observed price differences are recorded without changing prices.
+
+Latest branch: codex/variant-retailer-id-phase1, based on b1d0ad7 and preserving ae53bb4; freshly fetched origin/main remains older at 4769c08. Do not replay the guarded production backfill or the superseded hidden-row SQL. Runtime adoption is separately authorized Phase 2 below and in the companion prompt.
+
+## Planning checkpoint — 13 October (history)
 
 Canonical checkout: D:/cursor projects/Madikar taila. Planning branch: codex/variant-retailer-id-plan, based on ae53bb4 from codex/admin-shipment-messages. Local main and origin/main were still at 4769c08 when inspected and lack the subsequent weights, admin, order-reference and shipment work. Preserve the latest checkout; inspect history before branching instead of resetting to that older main baseline.
 
@@ -31,7 +39,7 @@ Four team-added variants postdate the 12 October audit; preserve them and all cu
 
 The 12 October audit fetched 87 Meta items in 57 groups and uniquely paired all 87 with the then-current 90 website variants. All paired prices and selling availability agreed. Three packs were absent from Meta. Fourteen additional Meta item IDs had no Product lookup row although their website variants existed. These are dated counts; fetch the catalog again before backfilling.
 
-## Proposed schema
+## Applied schema (same selected design)
 
 Add one nullable text column, retailer_id, to public."ProductVariant". Store the exact Meta item ID, preserving spelling and case. Do not store a product-group ID or invent a website ID. Keep an unverified/unlisted variant NULL.
 
@@ -50,9 +58,9 @@ The 12 October Groundnut Oil mapping illustrates the proposed result:
 
 Parent Product 5 retains retailer_id dtditk1gc0, store_id p1 and all four variants. No additional parent or hidden record is required by the new variant model.
 
-## Phase 1: add and backfill metadata
+## Phase 1: completed implementation method
 
-This is the next implementation scope. Leave existing bot/website runtime behavior unchanged; no existing Edge Function or website deployment is required.
+The following steps describe the completed Phase 1 method. Do not rerun its guarded production migration. Existing bot/website runtime remains unchanged; no existing function or website deployment occurred.
 
 1. Read PROJECT_HANDOFF.md, Project_Instructions.md, BOT_BACKEND_DO_NOT_TOUCH.md, PRODUCT_CATALOG_SCHEMA.md, WEBSITE_HANDOFF.md and this plan. Inspect Git, live schema/triggers/constraints/RLS/grants and deployed functions. Save fresh Product/ProductVariant snapshots and fingerprints; preserve team changes instead of applying older snapshots.
 2. Fetch every current Meta item and variant across every page. Request at least id, retailer_id, name, size, retailer_product_group_id, product_group, price, currency and availability. Check count/pagination completeness and duplicate IDs. Use existing Supabase-held credentials server-side; never print/save tokens or credential-bearing pagination URLs.
@@ -76,11 +84,11 @@ After Phase 1 is verified, prepare a separate focused runtime change:
 - Make manual sync variant-aware before using it for normal identity maintenance. Current sync creates/upserts a Product record per Meta item and deletes stale rows. A revised path must use reviewed variant mappings without duplicate parents, automatic regrouping/deletion or price/content changes. Current sync is not the Phase 1 backfill tool.
 - Test mapped/unmapped carts, legacy fallback, catalog scoping, duplicate/ambiguity handling, website item metadata and unchanged payment/order transitions. Inspect full deployed source and deploy only the specifically changed function.
 
-Phase 2 is outside this planning chat and the default Phase 1 prompt. Preserve all 17 legacy lookup records until a separately authorized cleanup proves every consumer and historical reference is independent of them. An admin ID field is optional later scope, not part of Phase 1.
+Phase 2 remains separately authorized runtime work, outside the completed Phase 1 implementation. The companion now describes that future work. Preserve all 17 legacy lookup records until separately authorized cleanup proves every consumer and historical reference independent of them. An admin ID field is optional later scope.
 
-## Scope and outstanding items
+## Original planning scope and outstanding items (history)
 
-No database/runtime implementation occurred in this planning chat. The old 14-hidden-record proposal was never approved/applied and is superseded. Do not execute its SQL, create those rows, delete existing lookups or overwrite parent retailer IDs.
+The 13 October planning chat made no database/runtime change; Phase 1 was applied on 14 October as recorded above. The old 14-hidden-record proposal was never approved/applied and is superseded. Do not execute its SQL, create those rows, delete existing lookups or overwrite parent retailer IDs.
 
 The owner is manually adding the three absent packs to Meta using the supplied public image links and intended existing IDs:
 
@@ -90,7 +98,7 @@ The owner is manually adding the three absent packs to Meta using the supplied p
 | Rose soap | Bar | mt-rose-soap-default |
 | Panchagavya soap | Pack of 4 | mt-panchagavya-soap-4pack |
 
-Their current Meta presence is unverified. Panchagavya uses its shared parent image; no separate four-pack image is stored. Use the fresh actual Meta IDs when verifying the mapping.
+The 14 October read found three generated IDs instead of these supplied IDs; the owner deferred their matching. See the result above. The new Panchagavya ₹60 item does not verify the four-pack identity. Use fresh actual IDs and verified packs in later mapping work.
 
 Content/metadata differences, courier rates/shipping calculations and the wider architecture/security audit remain deferred. Keep shipping zero. Preserve payment mode/secrets, checkout amounts, existing order references, payment/order_status messages, approved order_shipped notifications, tracking/delivery estimates, admin pagination and registration/address flows. No real customer messages or charges are needed for migration checks.
 

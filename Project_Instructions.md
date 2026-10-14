@@ -1,12 +1,12 @@
 # Madikar Taila — Project Instructions
 
-Last updated: 13 October 2026.
+Last updated: 14 October 2026.
 
-## Current next-chat scope — variant retailer IDs
+## Variant retailer IDs — Phase 1 complete, Phase 2 separate
 
-Read PROJECT_HANDOFF.md and docs/plans/VARIANT_RETAILER_IDS.md first. The owner chose nullable retailer_id on each existing ProductVariant instead of adding 14 hidden Product records. The old insertion proposal is superseded and never applied. Phase 1 adds/backfills verified Meta IDs while preserving all current Product rows, 94 variants and runtime behavior. Do not delete existing lookup rows, overwrite parent IDs or invoke full catalog sync. Bot lookup, website item IDs and sync adoption are a separate Phase 2.
+Read PROJECT_HANDOFF.md, docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report first. Migration 20261014120349_add_verified_variant_retailer_ids is applied: 87 verified IDs, eight NULLs and 95 existing variants preserved. Fresh Meta read found 90 items; the owner deferred three newly generated IDs. The superseded 14-hidden-row insertion was never applied. Do not delete lookups, overwrite parent IDs, replay the guarded production backfill or invoke current full sync. Runtime is unchanged; bot lookup, website item IDs and sync adoption are separate Phase 2.
 
-The handoff branch codex/variant-retailer-id-plan includes the latest code baseline ae53bb4. Main was at the older 4769c08 checkpoint when inspected; preserve subsequent admin/shipment changes. Latest recorded Site is version 31 and madikar-store v15. Older sections below are dated history; PROJECT_HANDOFF.md governs the current task. This planning chat changes documentation only.
+Latest branch codex/variant-retailer-id-phase1 extends b1d0ad7 and preserves ae53bb4's admin/shipment work. Freshly fetched origin/main remains at older 4769c08. Latest recorded Site is 31 and madikar-store v15; no existing function or Site deployment occurred in Phase 1. Older sections below are dated history; PROJECT_HANDOFF.md governs current work.
 
 Start with PROJECT_HANDOFF.md for the latest checkpoint. Preserve both public signing keys, the bot help-line update and all local outputs.
 

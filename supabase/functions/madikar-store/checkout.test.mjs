@@ -5,7 +5,7 @@ import {createCheckoutService,validateDelivery} from './checkout.ts';
 const address={name:'Test Buyer',phone:'9000000001',email:'',line1:'1 Test Street',line2:'',city:'Dharwad',state:'Karnataka',postalCode:'580001',country:'India'};
 const body=()=>({sessionId:crypto.randomUUID(),token:'a'.repeat(64),clientHash:'b'.repeat(64),address:{...address},lines:[{id:'p1',variant:0,quantity:2}]});
 const mac=(secret,value)=>createHmac('sha256',secret).update(value).digest('hex');
-function fixture({mode='test',existing=true,enabled=true,shipping=5000}={}){
+function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRetailerId=null}={}){
   const state={calls:[],sessions:[],profiles:existing?[{id:crypto.randomUUID(),whatsAppUserId:'91'+address.phone,name:'Original',email:'original@example.test'}]:[],orders:[],payment:{id:'pay_fixture',order_id:'order_fixture',amount:40000,currency:'INR',status:'captured',method:'upi'},finalized:0,remoteOrders:0,handoffs:[],allowed:true,due:[]};
   const env={RAZORPAY_MODE:mode,RAZORPAY_TEST_KEY_ID:'rzp_test_fixture',RAZORPAY_TEST_KEY_SECRET:'test-secret',RAZORPAY_LIVE_KEY_ID:'rzp_live_fixture',RAZORPAY_LIVE_KEY_SECRET:'live-secret',RAZORPAY_TEST_WEBHOOK_SECRET:'test-hook',RAZORPAY_LIVE_WEBHOOK_SECRET:'live-hook',N8N_WEBHOOK_URL:'https://fulfilment.example.test'};
   const database=async(path,options={})=>{
@@ -14,7 +14,7 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000}={}){
     if(table==='store_checkout_settings')payload=[{enabled,shipping_paise:shipping,recovery_token:'f'.repeat(64)}];
     else if(table==='store_allow_checkout')payload=state.allowed;
     else if(table==='Product')payload=[{id:1,store_id:'p1',name:'Oil',store_name:'Groundnut Oil',retailer_id:'meta-oil',catalog_id:'catalog'}];
-    else if(table==='ProductVariant')payload=[{id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:null,availability_status:'available'}];
+    else if(table==='ProductVariant')payload=[{id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:null,availability_status:'available',retailer_id:variantRetailerId}];
     else if(table==='Profile'){
       if(method==='POST')state.profiles.push(data);
       payload=state.profiles.filter(p=>p.whatsAppUserId===url.searchParams.get('whatsAppUserId')?.slice(3));
@@ -39,7 +39,7 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000}={}){
     if(url===env.N8N_WEBHOOK_URL){state.handoffs.push(JSON.parse(options.body));return new Response('ok')}
     const expected=state.sessions[0]?.mode||mode;
     assert.equal(options.headers.Authorization,'Basic '+btoa(env['RAZORPAY_'+expected.toUpperCase()+'_KEY_ID']+':'+env['RAZORPAY_'+expected.toUpperCase()+'_KEY_SECRET']));
-    if(url.endsWith('/orders')&&options.method==='POST'){state.remoteOrders++;return Response.json({id:'order_fixture',amount:40000,currency:'INR'})}
+    if(url.endsWith('/orders')&&options.method==='POST'){state.remoteOrders++;return Response.json({id:'order_fixture',amount:JSON.parse(options.body).amount,currency:'INR'})}
     if(url.endsWith('/orders/order_fixture/payments'))return Response.json({items:[state.payment]});
     if(url.endsWith('/orders/order_fixture'))return Response.json({id:'order_fixture',amount:40000,currency:'INR',status:'paid'});
     if(url.endsWith('/payments/pay_fixture'))return Response.json(state.payment);
@@ -72,6 +72,20 @@ test('new profile uses same hidden Auth identity; no address or order before pay
   const f=fixture({existing:false});await f.service.create(body());
   const auth=f.state.calls.find(c=>c.path==='/auth/v1/admin/users');assert.equal(auth.data.email,'wa_919000000001@whatsapp.local');
   assert.equal(f.state.profiles[0].whatsAppUserId,'919000000001');assert.equal(f.state.orders.length,0);assert.equal(f.state.calls.some(c=>c.path.includes('/addresses')),false);
+});
+
+test('Phase 1 nullable or mapped pack IDs preserve parent checkout identity, prices and zero shipping',async()=>{
+  for(const variantRetailerId of [null,'Verified-Pack-ID']){
+    const f=fixture({shipping:0,variantRetailerId}),b=body();
+    const prepared=await f.service.create(b);
+    assert.equal(prepared.amountPaise,35000);
+    assert.equal(f.state.sessions[0].items[0].retailerId,'meta-oil');
+    assert.equal(f.state.sessions[0].items[0].variantId,10);
+    assert.equal(f.state.sessions[0].items[0].unitPaise,17500);
+    assert.equal(f.state.sessions[0].shipping_paise,0);
+    assert.equal(f.state.orders.length,0);
+    assert.equal(f.state.finalized,0);
+  }
 });
 test('rate limit stops profile creation; invalid carts are rejected',async()=>{
   const f=fixture({existing:false});f.state.allowed=false;await assert.rejects(f.service.create(body()),/Too many/);assert.equal(f.state.calls.some(c=>c.path.startsWith('/auth/')),false);

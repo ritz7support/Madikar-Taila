@@ -1,10 +1,12 @@
 # WhatsApp Flow App — Project Handoff
 
-Last reviewed: 13 October 2026. Start with PROJECT_HANDOFF.md and docs/plans/VARIANT_RETAILER_IDS.md. Current inventory remains whatsapp-webhook 94, whatsapp-flow 50, razorpay-webhook 33, sync-meta-catalog 11 and retry-order-handoffs 6, with audit hashes unchanged; website madikar-store remains 15 and the latest recorded Site is 31. Preserve the owner-authored Razorpay help-line and later admin/shipment work. Older counters, row counts and continuation prompts below are dated history.
+Last reviewed: 14 October 2026. Start with PROJECT_HANDOFF.md, docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. Six function inventories/hashes/JWT settings are unchanged: whatsapp-webhook 94, whatsapp-flow 50, razorpay-webhook 33, sync-meta-catalog 11, retry-order-handoffs 6 and madikar-store 15. Latest recorded Site remains 31. Preserve the owner's help-line and admin/shipment work. Older counters/counts/prompts below are history.
 
-## Current next-chat task
+## Phase 1 complete; runtime adoption separate
 
-The owner chose retailer_id on each existing ProductVariant. This chat updates documentation only; no database/runtime changes. Phase 1 adds/backfills verified IDs from a fresh full Meta read while preserving parent Product IDs, all 17 existing lookup rows, 94 variants and current bot behavior. The proposed insertion of 14 more hidden rows is superseded. The bot currently reads Product, not ProductVariant; migrating that lookup with legacy fallback is separate Phase 2. Do not invoke full catalog sync, change incoming WhatsApp prices or edit payment/order_status, registration, address, shipment messages or courier shipping as a side effect. Use the plan's companion new-chat prompt rather than older prompts below.
+Migration 20261014120349_add_verified_variant_retailer_ids adds nullable variant retailer IDs with format/unique protection: 87 verified assignments and eight NULLs across 95 existing variants. Fresh Meta read found 90 items; the owner deferred three generated IDs. All Product IDs, 17 legacy lookup rows, existing variant fields/weights/prices, customer/order/payment data, RPCs/security/settings/jobs and runtime are unchanged. All 49 mocked tests and rollback-only SQL checks passed; the expiring GET-only reader was removed. No existing function deployment, full sync, customer message or payment processing occurred.
+
+The bot still reads Product, not ProductVariant. Catalog-scoped variant/parent lookup with legacy/incoming fallback is separately authorized Phase 2, together with website item IDs and safe variant-aware manual sync. Do not replay the backfill, insert the superseded 14 hidden rows, delete lookups, invoke current full sync or change incoming prices, payment/order_status, registration/address/shipment messages or courier shipping. Shipping stays zero.
 
 ## 1. Source-of-truth rules
 

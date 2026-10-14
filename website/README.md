@@ -1,8 +1,8 @@
 # Madikar Taila website source
 
-Canonical development source. Latest recorded Site: appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com, version 31. Sites commit: acedd13d7cd3acce09e18d800f402b46b30a4fbf. The Sites repository is a publishing mirror; reconcile it before editing and preserve its project ID/audience. Latest handoff is codex/variant-retailer-id-plan, based on ae53bb4; inspect history and preserve current work because main was older when checked.
+Canonical source. Latest recorded Site: appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com, version 31. Sites commit: acedd13d7cd3acce09e18d800f402b46b30a4fbf. Sites is a publishing mirror; preserve its project/audience. Latest branch: codex/variant-retailer-id-phase1, based on b1d0ad7 and preserving ae53bb4. Origin/main remains older at 4769c08.
 
-Read ../PROJECT_HANDOFF.md, ../docs/plans/VARIANT_RETAILER_IDS.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. Next task is Phase 1 variant retailer-ID metadata/backfill with runtime unchanged; the hidden-row proposal is superseded. Checkout remains zero shipping and UPI-only; both modes send n8n and the existing confirmation template after verified capture. Current website backend inventory remains madikar-store v15. No deployment/publication occurred in the planning chat.
+Read ../PROJECT_HANDOFF.md, ../docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. Phase 1 is applied: 87 mapped IDs, eight NULLs and 95 variants preserved; runtime unchanged. Bot lookup, website item IDs and sync adoption are separate Phase 2. The three generated Meta IDs are owner-deferred. Do not replay the backfill, insert superseded hidden rows or invoke current full sync. Forty-nine mocked tests passed. Checkout stays zero shipping and UPI-only; existing n8n/payment/shipment messages are preserved. madikar-store remains v15, Site 31; no existing function or Site deployment occurred.
 
 ## Layout and checks
 

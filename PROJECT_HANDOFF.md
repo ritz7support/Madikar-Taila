@@ -1,8 +1,19 @@
 # Madikar Taila — project analysis starting point
 
-Updated 13 October 2026. The latest handoff is on codex/variant-retailer-id-plan, based on ae53bb4 from codex/admin-shipment-messages. Local main and origin/main were still at 4769c08 when inspected and lack the subsequent weights/admin/reference/shipment work. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Start with git status and git log -1; preserve the latest checkout and newer work rather than resetting to the older main baseline. The older codex/website and cursor/production-hardening branches remain as history.
+Updated 14 October 2026. Latest work: codex/variant-retailer-id-phase1, based on b1d0ad7 and preserving ae53bb4's admin/shipment baseline. Freshly fetched origin/main remains at older 4769c08. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Inspect Git and preserve the latest work; do not reset to older main. Older branches remain as history.
 
-## 13 October variant retailer-ID plan and next-chat handoff
+## 14 October variant retailer IDs — Phase 1 applied
+
+- Read docs/plans/VARIANT_RETAILER_IDS_PHASE1_REPORT.md and the updated plan/companion. Migration 20261014120349_add_verified_variant_retailer_ids is applied: nullable text ProductVariant.retailer_id, blank/surrounding-whitespace check and partial unique index. Exactly 87 revalidated Meta IDs populate existing variants; eight remain NULL. Parent retailer IDs and all 17 lookup rows are preserved. The superseded 14-hidden-row proposal was not applied.
+- Fresh complete Meta read at 17:26:46 IST found 90 items in three pages, with matching before/after product_count and no duplicate IDs. Current database: 76 Product rows, 59 website parents, 17 lookups and **95** variants. New variant 120 is Jaggery powder 500 gms. Mango pickle variant 83 now reads **300 g**, with weight 300 g; all team-entered values were preserved.
+- The owner explicitly deferred generated Meta IDs 3l8f6g8wzz (Mango), lblvc9q42a (Rose) and dg4i4tvblo (Panchagavya), all with omitted sizes. NULL variants: 83 Mango 300 g, 102 Rose Bar, 105 Panchagavya Pack of 4, 116/117 Sesame 500/200 ml, 118 Flax seed 200 ml, 119 Niger/Huchellu 200 ml and 120 Jaggery powder 500 gms. Five added packs have no current Meta counterpart; the other three assignments remain deferred/unverified.
+- All 49 mocked automated tests and the live rollback-only variant-ID SQL fixture passed. Live read-only catalog/config returned HTTP 200: 59 parents/95 packs match current sizes/prices/availability, checkout is ready and shipping is zero. Before/after hashes match for all Product fields, all pre-existing variant fields, orders/items/payments/addresses/profiles. RLS, grants, triggers, existing constraints/indexes, protected RPCs, checkout settings and cron jobs are preserved. Every populated ID matches the fresh item and existing parent/pack. Eleven verified Meta items omit size; historical identities were revalidated without guessing.
+- The authenticated, expiring GET-only reader was removed and verified 404. Six existing function IDs, versions, source hashes and JWT settings are unchanged: 94/50/33/11/6/15. No existing function deployment, full sync, Site publication, customer message or order/payment processing occurred. Latest recorded Site remains 31; shipping remains zero.
+- Separate Phase 2: catalog-scoped variant/parent bot lookup with legacy/incoming fallbacks; website variant item IDs with parent fallback and unchanged historical items; safe variant-aware manual sync before invocation. Keep all legacy lookup rows. Current runtime consumers still read Product retailer IDs.
+- Price differences were observed and left untouched: Sesame 1 L Meta ₹1 vs Supabase ₹595; Mustard 200 ml ₹1 vs ₹90; Jaggery 1 kg ₹70 vs ₹85. Price/content reconciliation, courier calculations and wider audit remain deferred.
+- Ignored evidence: outputs/variant-retailer-id-phase1-20261014/ contains complete Meta items, mapping review, before/after catalog snapshots, fingerprints and cleanup verification. The committed report includes all 87 mappings and unmatched tables; do not upload outputs wholesale.
+
+## 13 October variant retailer-ID plan and next-chat handoff (history)
 
 - The owner chose one Meta retailer ID per existing ProductVariant. Read docs/plans/VARIANT_RETAILER_IDS.md and its NEW_CHAT_PROMPT companion. This chat prepares documentation only: no schema/data changes, existing function deployment, payment or customer message. The earlier proposal to add 14 hidden Product lookup rows is superseded and must not be applied.
 - Live read at 22:31 IST: 76 Product rows, 59 website parents, 17 additional rows without store_id and 94 variants; ProductVariant.retailer_id is absent. Four new packs are Sesame 500 ml (116), Sesame 200 ml (117), Flax seed 200 ml (118) and Niger/Huchellu 200 ml (119). Preserve current team values. Sixteen legacy lookup rows are flagged active but still excluded by the website/admin store_id filter; do not change those flags incidentally.
@@ -100,7 +111,7 @@ outputs/ contains backups, customer/data snapshots, source downloads and generat
 
 ## Suggested next-chat request
 
-Use docs/plans/VARIANT_RETAILER_IDS_NEW_CHAT_PROMPT.md for Phase 1 of the retailer-ID plan. The wider analysis request below remains deferred and is not the next task.
+Phase 1 is complete. docs/plans/VARIANT_RETAILER_IDS_NEW_CHAT_PROMPT.md covers separately authorized Phase 2 compatibility work; do not replay Phase 1 or invoke current full sync. The wider analysis request below remains deferred.
 
 ### Deferred wider analysis request
 

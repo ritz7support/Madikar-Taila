@@ -13,7 +13,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     .replace(/const PUBLIC_KEYS = \[[\s\S]*?\];/,`const PUBLIC_KEYS = [${JSON.stringify(publicJwk)}];`)
     .replace(/const ADMIN_LINK_HASH = '[a-f0-9]{64}';/,`const ADMIN_LINK_HASH = '${createHash('sha256').update(adminToken).digest('hex')}';`);
   let handler;
-  let variant={id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:5,availability_status:'available',shipping_weight_grams:null};
+  let variant={id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:5,availability_status:'available',shipping_weight_grams:null,retailer_id:'Verified-Pack-ID'};
   let rejectCatalogReads=0;
   let rejectOrderReads=0;
   const orders=Array.from({length:25},(_,index)=>({id:index+1,reference_id:'ORDER-'+(index+1),source:index<8?'store':'whatsapp',
@@ -44,7 +44,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
       if (String(url).includes('/ProductVariant')) {
         if (!options.method && rejectCatalogReads-->0) return Response.json({code:'PGRST303',message:'JWT claims validation failed'},{status:401});
         if (options.method === 'PATCH') variant={...variant,...JSON.parse(options.body)};
-        if (options.method === 'POST') return Response.json([{id:11,shipping_weight_grams:null,...JSON.parse(options.body)}]);
+        if (options.method === 'POST') return Response.json([{id:11,shipping_weight_grams:null,retailer_id:null,...JSON.parse(options.body)}]);
         return Response.json([variant]);
       }
       if (String(url).includes('/rpc/store_admin_orders_page')) {
@@ -172,6 +172,8 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   assert.equal(publicVariant.price,175);
   assert.equal(publicVariant.orderable,true);
   assert.equal(Object.hasOwn(publicVariant,'shipping_weight_grams'),false);
+  assert.equal(Object.hasOwn(publicVariant,'retailer_id'),false,'Phase 1 must preserve the public catalog contract');
+  assert.equal(variant.retailer_id,'Verified-Pack-ID','existing admin saves preserve mapped IDs');
   for (const invalid of [0,-1,0.5,'500.5','abc',true,[],{},2147483648]) {
     const calls=databaseCalls.length;
     const rejected=await send({...pack,shippingWeightGrams:invalid});
@@ -187,7 +189,16 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   for (const weight of [250,'']) {
     const added=await send({...newPack,productId:1,shippingWeightGrams:weight});
     assert.equal(added.status,200);
-    assert.equal((await added.json()).variant.shipping_weight_grams,weight === '' ? null : weight);
+    const addedVariant=(await added.json()).variant;
+    assert.equal(addedVariant.shipping_weight_grams,weight === '' ? null : weight);
+    assert.equal(addedVariant.retailer_id,null,'new packs need no retailer ID in Phase 1');
+  }
+  for (const retailerId of [null,'Verified-Pack-ID']) {
+    variant.retailer_id=retailerId;
+    const unchanged=await send({...pack,retailerId:'unreviewed',retailer_id:'unreviewed'});
+    assert.equal((await unchanged.json()).variant.retailer_id,retailerId,'current admin field whitelist preserves nullable/mapped metadata');
+    const lastPatch=databaseCalls.filter(c=>c.options.method==='PATCH'&&c.url.includes('/ProductVariant')).at(-1);
+    assert.equal(Object.hasOwn(JSON.parse(lastPatch.options.body),'retailer_id'),false);
   }
   const calls=databaseCalls.length;
   assert.equal((await send({...pack,adminToken:'invalid',shippingWeightGrams:600})).status,403);

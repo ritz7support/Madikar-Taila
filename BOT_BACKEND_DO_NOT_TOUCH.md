@@ -1,12 +1,12 @@
 # WhatsApp bot backend — do not change these for website work
 
-Last reviewed: 13 October 2026.
+Last reviewed: 14 October 2026.
 
-## Planned variant identity migration
+## Applied Phase 1 variant identity metadata
 
-The owner selected a future ProductVariant.retailer_id column; see docs/plans/VARIANT_RETAILER_IDS.md. Only planning/documentation occurred in this chat. The old proposal to insert 14 hidden Product lookup rows is superseded. The current bot still reads Product by retailer_id/catalog_id and falls back to incoming metadata; adding the variant column alone does not change that behavior.
+ProductVariant.retailer_id is applied with 87 verified IDs and eight NULLs across 95 preserved variants; see docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. The owner deferred three newly generated Meta IDs. The superseded 14-hidden-row insertion was not applied. The bot still reads Product by retailer_id/catalog_id and falls back to incoming metadata; Phase 1 leaves that behavior unchanged.
 
-Phase 1 must preserve Product retailer IDs, legacy lookup rows, current variants/weights/prices, protected RPCs, RLS/grants, configurations and all bot/website runtime behavior. No existing function deployment is required. Variant-aware bot lookup/manual sync is a separate, focused Phase 2 with legacy fallbacks and regression verification; it is not permission to rewrite checkout, payments, registration, address flows or messages. No per-item synchronous Meta requests or full catalog sync during backfill.
+Phase 1 verified unchanged parent retailer IDs, 17 lookup rows, all prior variant fields, orders/payments, protected RPCs, RLS/grants, settings/jobs and six existing functions. No existing function was deployed. Variant-aware lookup/manual sync is separate Phase 2 with legacy fallbacks and regression tests; it is not permission to rewrite checkout, payments, registration, address flows or messages. No per-item synchronous Meta requests or current full sync.
 
 The Supabase project `faoomjgkofqrdajaftjd` (name `Whatsapp`, region `ap-south-1`) runs the Madikar Taila WhatsApp ordering bot. The Sites website also uses this Supabase project through its separate `madikar-store` function. Website work must add or change its own functions, tables, and policies. It must not edit, redeploy, rename, or "clean up" the bot pieces below.
 

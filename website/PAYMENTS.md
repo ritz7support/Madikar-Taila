@@ -1,8 +1,8 @@
-# Website checkout — updated 13 October 2026
+# Website checkout — updated 14 October 2026
 
-## Planned variant IDs — preserve payment behavior
+## Applied Phase 1 variant IDs — payment behavior preserved
 
-The owner selected a future nullable ProductVariant.retailer_id and verified Meta backfill; see ../docs/plans/VARIANT_RETAILER_IDS.md. This planning chat changes no database/runtime. Phase 1 leaves checkout and bot unchanged. Website quote creation currently stores Product.retailer_id for every selected pack; preferring the verified variant ID with parent fallback is a separate Phase 2, with historical order-item IDs preserved. Do not apply the superseded hidden-row proposal or change amounts, prices, shipping, modes/secrets, payment verification, references, confirmation templates or shipment messages during the metadata work.
+Migration 20261014120349_add_verified_variant_retailer_ids is applied with 87 verified IDs and eight NULLs across 95 existing variants. See ../docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. All prior catalog/customer/order/payment fields, security, RPCs, settings/jobs and runtime are unchanged. Forty-nine mocked tests and rollback-only SQL checks passed. Website quote creation still records Product.retailer_id for every pack; preferring variant IDs with parent fallback is separate Phase 2, preserving historical order items. Three newly generated Meta IDs are owner-deferred. Do not replay the backfill, insert superseded hidden rows, replace parent IDs or invoke current full sync. Preserve prices/amounts, zero shipping, secrets/modes, payment verification/references, confirmations and shipment messages.
 
 Website checkout is enabled with **zero shipping**, approved by the owner on 30 September 2026. `public.store_checkout_settings.enabled=true` and `shipping_paise=0`; customers pay only the selected product total. The last verified Supabase RAZORPAY_MODE was test; read the current configuration before payment analysis. Repository consolidation does not change it. Real-money collection remains subject to the shared mode and live-payment verification. Bot functions, settings and secrets remain untouched.
 

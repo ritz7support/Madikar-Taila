@@ -1,10 +1,12 @@
 # WhatsApp Flow App — Error & Prevention Guide
 
-Last reviewed: 13 October 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale). Historical incidents retain their original dates; use PROJECT_HANDOFF.md for the current baseline.
+Last reviewed: 14 October 2026. Supersedes `WhatsApp_Flow_Error_Prevention_Guide_Updated_23Sep2026_v6.docx` (deleted — it was stale). Historical incidents retain their original dates; use PROJECT_HANDOFF.md for the current baseline.
 
-## Variant retailer-ID work — planning checkpoint
+## Variant retailer-ID work — Phase 1 verified
 
-Read docs/plans/VARIANT_RETAILER_IDS.md before the next catalog change. The selected model adds retailer_id to existing ProductVariant; the 14-hidden-row insertion proposal is superseded. Phase 1 is additive metadata/backfill only and must leave bot/website consumers untouched. Preserve parent IDs, existing lookups and all current team data. Freshly fetch every Meta page and verify parent/group/size mappings; do not assume incoming WhatsApp items always include size or guess IDs from product names/prices. The current sync writes/deletes Product rows and is not a variant backfill tool. Do not call Meta synchronously per cart item. Variant-aware lookup, website item IDs and manual sync need separate compatibility tests and retained legacy fallbacks in Phase 2.
+Read docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. The nullable retailer_id column is applied: 87 revalidated IDs, eight NULLs and 95 preserved variants. Fresh Meta read found 90 items; three generated IDs are owner-deferred. Bot/website runtime, all prior data, security/RPCs/jobs and six functions are unchanged; 49 mocked tests and rollback-only SQL checks passed. The expiring signed GET-only reader was removed and verified 404.
+
+Do not replay the guarded backfill, apply the superseded hidden-row insertion, replace parent IDs, delete lookups, infer packs from names/prices or invoke current full sync. Meta omits sizes on 14 items; 11 prior identities were verified through exact historical IDs/groups/parent/pack evidence. Separate Phase 2 requires scoped variant lookup, legacy/incoming fallbacks, website item IDs and safe variant-aware sync. No synchronous Meta request per cart item. Prices/content/metadata and courier calculations remain deferred.
 
 **Manual-edit reconciliation, 30 Sep:** the owner added `Need help with your order? Contact us at 99722 67897.` to the live Razorpay payment-confirmation message. Complete `razorpay-webhook` v32 source was retrieved and copied into the local branch; the shared handoff module matches and was not changed. The outbound JSON reference was updated. This was a source synchronization, with no deployment, secret change or live payment test. Preserve the change when resuming website work.
 

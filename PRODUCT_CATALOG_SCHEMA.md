@@ -1,10 +1,10 @@
-# Product catalog schema — current checkpoint 13 October 2026
+# Product catalog schema — current checkpoint 14 October 2026
 
-## Variant retailer IDs — planned, not implemented
+## Variant retailer IDs — Phase 1 applied
 
-The owner selected nullable text ProductVariant.retailer_id, populated with each verified Meta item/pack ID. Read docs/plans/VARIANT_RETAILER_IDS.md for mapping, constraints, compatibility and continuation. No column or backfill has been applied. The previous 14-hidden-row insertion proposal is superseded. Preserve Product.retailer_id and all existing lookup rows; Phase 1 changes only variant metadata and leaves runtime consumers unchanged. Bot/website/sync adoption is a separate Phase 2.
+Migration 20261014120349_add_verified_variant_retailer_ids adds nullable text ProductVariant.retailer_id, rejecting blank/surrounding-whitespace values and uniquely indexing populated IDs. Exact spelling/case is retained; NULL means unverified/unlisted. All current parents use catalog 1515875913870520; review uniqueness before multiple-catalog adoption. Exactly 87 variants are mapped and eight remain NULL. Product retailer IDs, lookup rows and runtime are unchanged. See docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. Bot/website/sync adoption is separate Phase 2; the superseded 14-hidden-row insertion was not applied.
 
-Live read on 13 October: 76 Product records, 59 website parents, 17 lookup rows without store_id and 94 variants. Sixteen lookup rows are flagged active, but store_id filtering still excludes them from website/admin listings. Four new variants are Sesame 500 ml/200 ml, Flax seed 200 ml and Niger/Huchellu 200 ml. Preserve team-entered values and refresh both systems before mapping; the 12 October Meta audit counts are historical.
+Fresh 14 October read: 76 Product rows, 59 website parents, 17 lookups without store_id and 95 variants, unchanged after migration. Sixteen lookup rows are active, but store_id filtering excludes them. Sesame 500/200 ml, Flax seed 200 ml, Niger/Huchellu 200 ml and new Jaggery powder 500 gms have no current Meta counterpart. Mango pickle is now 300 g. Complete Meta pagination found 90 items; the owner deferred generated Mango/Rose/Panchagavya IDs. All existing prices, weights, availability, stock, sizes, names and links were preserved.
 
 ## Shipping weights — 5 October 2026
 
@@ -14,7 +14,7 @@ The existing admin variant editor and Add pack form now accept Shipping weight (
 
 This is metadata entry only: website and WhatsApp shipping remain zero, and public catalog, checkout, payments, bot handlers and Meta sync are unchanged. Courier rules and the runtime Meta retailer-ID-to-variant mapping remain a later phase. Historical reconciliation mappings are evidence to verify, not an active database relationship. Latest publication: Sites version 25 and madikar-store v11. The older checkpoints below remain historical.
 
-**Current:** 59 website parents, 94 variants and 17 extra Meta lookup rows without store_id. ProductVariant.product_name follows its parent; inventory remains untracked. Latest checkpoint and retailer-ID plan are above and in PROJECT_HANDOFF.md. The dated September/October release counts below are history; statements that only eight products are visible or product pages are pending are superseded.
+**Current:** 59 website parents, 95 variants and 17 extra Meta lookup rows without store_id. ProductVariant.product_name follows its parent; inventory remains untracked. Latest checkpoint and retailer-ID result are above and in PROJECT_HANDOFF.md. The dated September/October release counts below are history; statements that only eight products are visible or product pages are pending are superseded.
 
 **30 September continuation checkpoint (history):** All 59 canonical website groups were made visible across the nine categories below; the then-current 90 variants and 59 bucket image links were served through `madikar-store` v5. The 17 additional Meta lookup rows remained hidden. Sites version 15 introduced `/products/<slug>` pages and browser redirects for old `/?product=<store_id>` links. The three optional detail fields were left empty and hidden by owner choice. Use the 13 October checkpoint above and `WEBSITE_HANDOFF.md` for current counts and versions.
 
