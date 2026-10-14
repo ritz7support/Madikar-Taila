@@ -1,8 +1,16 @@
 # Madikar Taila — project analysis starting point
 
-Updated 14 October 2026. Latest work: codex/catalog-export-variant-compatibility, based on be60d37 and preserving ae53bb4's admin/shipment baseline. Last fetched origin/main was older at 4769c08. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Inspect Git and preserve the latest work; do not reset to older main. Older branches remain as history.
+Updated 15 October 2026. Latest work: codex/catalog-export-variant-compatibility, continuing from 74ed990 and preserving ae53bb4's admin/shipment baseline. Last fetched origin/main was older at 4769c08. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Inspect Git and preserve the latest work; do not reset to older main. Older branches remain as history.
 
-## 14 October owner live payments and catalog corrections — current checkpoint
+## 15 October CSV refresh and WhatsApp order-ID prefix — current checkpoint
+
+- Read docs/plans/CATALOG_REFRESH_AND_ORDER_PREFIX_2026-10-15.md. The owner requested the CSV refresh and `order_` provider-ID correction, and deferred the additional live test of a pack whose retailer ID differs from its parent.
+- Fresh complete Meta snapshot at 14 October 23:57:21 IST has 94 unique items across three pages, all matching current Supabase variants, prices and product-page links. The canonical CSV and earlier delivered copy are refreshed: extra Panchagavya removed, Mustard 200 ml ₹90, Jaggery 1 kg ₹85, four ₹1 test packs retained. All 1,410 cells passed source/round-trip checks. Guide and checklist are current; missing identifiers and image/feed-ownership limitations remain documented.
+- Only razorpay-webhook v34 was deployed. It prefers the canonical payment entity order ID and adds `order_` to a bare fallback. Both deployed source files match local; the shared module, authentication, all other functions and Site 31 are unchanged. All 61 tests and the bundle check passed; unsigned requests return 401.
+- Fourteen historical paid WhatsApp provider order IDs were individually verified with Razorpay and corrected by a guarded transaction. Zero non-null WhatsApp IDs now lack the prefix. All other payment fields/timestamps, orders/items, catalog data, routines and database security are unchanged. User-facing ORD references are unchanged. Missing payment_method metadata remains separate.
+- No Meta write/upload/full sync, new payment/refund or customer message occurred. The temporary GET-only reader was removed and returns 404. Evidence: ignored outputs/catalog-prefix-update-20261014/.
+
+## 14 October owner live payments and catalog corrections — earlier checkpoint
 
 - Read docs/plans/LIVE_PAYMENT_AUDIT_2026-10-14.md. The owner's live ₹1 tests succeeded: WhatsApp order 169 / Safflower 500 ml and website order 170 / Coconut 200 ml. Exact variant IDs and 100-paise amounts agree through stored orders and Razorpay's captured UPI records. Both orders are processing with one paid record, first-attempt Meta confirmation acceptance and successful first-attempt n8n handoff. All 42 logged function requests in the test window returned 200; no application failure/mismatch was found. No payment/message was triggered by this read-only audit.
 - Fresh complete Meta read at 23:43:29 IST found 94 items across three pages, matching all 94 database variants and prices. Extra Panchagavya dg4i4tvblo is removed. Mustard 200 ml is ₹90 and Jaggery 1 kg ₹85 in both systems. Four ₹1 test packs remain in both systems; docs/catalog/One_Rupee_Test_Prices.md is updated. The earlier 95-item CSV remains a dated snapshot and must not be uploaded unchanged.

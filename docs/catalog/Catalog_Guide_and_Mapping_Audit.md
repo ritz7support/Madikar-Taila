@@ -1,26 +1,24 @@
 # Meta catalog guide and mapping audit
 
-**Later verification, 14 October at 23:43 IST:** the catalog now has 94 items after the owner's Panchagavya removal. Mustard 200 ml is ₹90 and Jaggery 1 kg ₹85, matching Supabase. The CSV and item table below preserve the earlier 22:39 snapshot; **do not upload that historical CSV unchanged**. See ../plans/LIVE_PAYMENT_AUDIT_2026-10-14.md and the updated One_Rupee_Test_Prices.md. No CSV was uploaded during verification.
-
-Snapshot: 14 October 2026 at 10:39:34 pm IST. Catalog 1515875913870520. All 95 current Meta items were read across 3 pages, with matching before/after product counts and unique item IDs. The CSV includes items originally entered manually and by feed. No Meta item was changed or uploaded.
+Refreshed snapshot: 14 October 2026 at 11:57:21 pm IST. The existing filename is retained for continuity; this replaces the earlier 95-item export. Catalog 1515875913870520. All 94 current Meta items were read across 3 pages, with matching before/after product counts and unique item IDs. The CSV includes items originally entered manually and by feed. No Meta item was changed or uploaded.
 
 ## Files and editing
 
 Meta_Catalog_2026-10-14.csv uses Meta feed column names and UTF-8 encoding. One row is one catalog item/pack. The id column is the exact Meta retailer ID, not Meta's numeric internal object ID. Keep existing IDs unchanged, and give each new pack a new unique ID. Use the same item_group_id for variants of one product. The price format is 1.00 INR. Descriptions, names, prices, groups, sizes, availability, links and images are copied from Meta; missing source values stay blank. Meta's system object IDs/feed IDs and empty/default-only attributes are retained in the saved JSON audit, not emitted as invented feed columns.
 
-The CSV is a complete snapshot and editing base; it is **not a verified blanket replacement upload**. There are 26 current items without brand, GTIN or MPN. Meta's feed requirements call for a supported product identifier; complete the correct brand or identifier for those rows before a new feed import. Do not fill another manufacturer's products with Madikar Taila. Existing blank sizes also remain blank instead of inventing source data.
+The CSV is a complete snapshot and editing base; it is **not a verified blanket replacement upload**. There are 25 current items without brand, GTIN or MPN. Meta's feed requirements call for a supported product identifier; complete the correct brand or identifier for those rows before a new feed import. Do not fill another manufacturer's products with Madikar Taila. Existing blank sizes also remain blank instead of inventing source data.
 
-All image_link values are preserved exactly: 29 are Meta-hosted signed CDN URLs and 66 are existing Google Drive links. The signed CDN URLs can expire; the Drive links depend on the original files remaining publicly accessible. Before reusing an old export, refresh these URLs or use approved persistent public product-image URLs; do not remove URL query parameters or assume a different website image is identical.
+All image_link values are preserved exactly: 28 are Meta-hosted signed CDN URLs and 66 are existing Google Drive links. The signed CDN URLs can expire; the Drive links depend on the original files remaining publicly accessible. Before reusing an old export, refresh these URLs or use approved persistent public product-image URLs; do not remove URL query parameters or assume a different website image is identical.
 
 For adding products, make a copy containing the header and only the new rows, with unique IDs, valid brands/identifiers, prices, group/size and persistent image URLs. For editing an existing item, keep its original ID and check its owning data source in Commerce Manager. This catalog combines manually entered items with feed 1092721596505856. A new feed is not assumed to take ownership of manually entered items. Use the upload preview and the appropriate update mode; do not choose replace/delete-missing for a subset. No feed ownership migration or live import test was performed.
 
 ## Mapping results
 
-All 94 Supabase variants have unique populated retailer IDs that match current Meta items and the correct parent catalog. All populated Meta sizes normalize to the matched website size. Missing Meta sizes use already verified historical/owner assignments, not a new guess. Every mapped product link matches its website slug. The user's 23 link changes are present. 2 price differences remain deliberate/unresolved and were not silently reconciled: Jaggery 1 kg: Meta ₹70, website ₹85; Mustard oil 200 ml: Meta ₹1, website ₹90.
+All 94 Supabase variants have unique populated retailer IDs that match current Meta items and the correct parent catalog. All populated Meta sizes normalize to the matched website size. Missing Meta sizes use already verified historical/owner assignments, not a new guess. Every mapped product link matches its website slug. The user's 23 link changes are present. All 94 current Meta/website variant prices agree. Mustard 200 ml is ₹90 and Jaggery 1 kg is ₹85 in both systems. Four ₹1 testing prices remain; see One_Rupee_Test_Prices.md.
 
-Meta still contains the unassigned Panchagavya soap item dg4i4tvblo at ₹60 without a size. It is included because the request was to export everything currently on Meta. The database four-pack and its inactive lookup have been removed; this unassigned Meta item is not treated as that four-pack.
+The owner removed extra Meta Panchagavya item dg4i4tvblo; it is absent from this refreshed CSV. The earlier database four-pack and inactive lookup are also removed. The existing single bar remains mapped and unchanged. All current Meta items are matched; there are no unassigned items.
 
-The owner-approved compatibility patch is now deployed: whatsapp-webhook v95 resolves catalog-scoped variant IDs with parent/legacy/incoming fallbacks, and madikar-store v16 records variant IDs in new quotes with parent fallback. WhatsApp transaction prices and website server prices remain the respective sources; historical snapshots are unchanged. All 56 tests, all 94 mocked pack/payment preparations, live identity queries and deployed source parity checks passed. See docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md. Current full sync remains unsafe and uninvoked pending a separate redesign. No Meta write, real payment or customer message was made.
+The owner-approved variant compatibility patch is deployed: whatsapp-webhook v95 resolves catalog-scoped variant IDs with legacy fallbacks, and madikar-store v16 records variant IDs in new quotes with parent fallback. The owner’s two live ₹1 purchases succeeded; an additional live test of a pack whose retailer ID differs from its parent is deferred. The separate Razorpay order-ID prefix correction is recorded in PROJECT_HANDOFF.md. Current full sync is unsafe for the variant model and must remain uninvoked until separately revised. No synchronous Meta calls, price reconciliation, real payment or customer message is required by this audit.
 
 ## Missing product identifiers in Meta
 
@@ -37,7 +35,6 @@ The owner-approved compatibility patch is now deployed: whatsapp-webhook v95 res
 - Mustard oil 500 ml: cqh56ytb6d
 - Mustard oil 1 L: lgkmrnaejq
 - Mustard oil 200 ml: rihd1eocew
-- Panchagavya soap: dg4i4tvblo
 - Rose soap: lblvc9q42a
 - Safflower Oil 500 ml: adk09bs27q
 - Safflower Oil 1 L: akcbpy9hfg
@@ -90,7 +87,7 @@ The owner-approved compatibility patch is now deployed: whatsapp-webhook v95 res
 | Honey | 1 kg | mt-honey-1000g | 35 | 445 | 445 | Mapped |
 | Honey | 200 g | mt-honey-200g | 33 | 110 | 110 | Mapped |
 | Honey | 500 g | mt-honey-500g | 34 | 225 | 225 | Mapped |
-| Jaggery | 1 kg | mt-jaggery-1000g | 40 | 70 | 85 | Mapped |
+| Jaggery | 1 kg | mt-jaggery-1000g | 40 | 85 | 85 | Mapped |
 | Jaggery powder | 500 gms | lgurnzbpbr | 120 | 65 | 65 | Mapped |
 | Jaggery powder | 1 kg | mt-jaggery-powder-1000g | 42 | 125 | 125 | Mapped |
 | Korale | 1 kg | mt-korale-millet-1000g | 70 | 265 | 265 | Mapped |
@@ -105,7 +102,7 @@ The owner-approved compatibility patch is now deployed: whatsapp-webhook v95 res
 | Moringa kashaya | Pack (Meta size absent) | mt-moringa-kashaya-default | 101 | 200 | 200 | Mapped |
 | Mustard oil | 500 ml | cqh56ytb6d | 17 | 200 | 200 | Mapped |
 | Mustard oil | 1 L | lgkmrnaejq | 18 | 395 | 395 | Mapped |
-| Mustard oil | 200 ml | rihd1eocew | 16 | 1 | 90 | Mapped |
+| Mustard oil | 200 ml | rihd1eocew | 16 | 90 | 90 | Mapped |
 | Navani | 1 kg | mt-navani-millet-1000g | 62 | 80 | 80 | Mapped |
 | Navani | 500 g | mt-navani-millet-500g | 61 | 40 | 40 | Mapped |
 | Neem | Pack of 3 | mt-neem-soap-3pack | 106 | 90 | 90 | Mapped |
@@ -116,7 +113,6 @@ The owner-approved compatibility patch is now deployed: whatsapp-webhook v95 res
 | Orange | Pack of 3 | mt-orange-soap-3pack | 107 | 90 | 90 | Mapped |
 | Pain relief Oil | 100 ml | mt-pain-relief-oil-100ml | 28 | 145 | 145 | Mapped |
 | Panchagavya | Bar (Meta size absent) | mt-panchagavya-soap-default | 104 | 60 | 60 | Mapped |
-| Panchagavya soap | Not supplied (Meta size absent) | dg4i4tvblo | — | 60 | — | Unassigned |
 | Puliogere Powder | 100 g | mt-puliogere-powder-100g | 80 | 55 | 55 | Mapped |
 | Pumpkin Seeds | 100 g | mt-pumpkin-seeds-100g | 48 | 70 | 70 | Mapped |
 | Putane Chutney | 200 g | mt-putane-chutney-200g | 74 | 75 | 75 | Mapped |

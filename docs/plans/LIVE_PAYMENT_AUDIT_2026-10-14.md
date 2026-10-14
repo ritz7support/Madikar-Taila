@@ -1,5 +1,7 @@
 # Live payment verification — 14 October 2026
 
+**Subsequent owner-requested work, 15 October:** the CSV has now been refreshed from all 94 items at 23:57 IST, and razorpay-webhook v34 plus a provider-verified 14-row historical correction fixes the missing `order_` prefix. Missing payment-method metadata remains separate. The additional live pack test is owner-deferred. See [the follow-up report](CATALOG_REFRESH_AND_ORDER_PREFIX_2026-10-15.md). The findings below preserve the original audit window.
+
 Both owner-performed ₹1 purchases completed successfully. This audit correlated Supabase records and runtime logs with read-only Razorpay payment/link/order responses. No customer message, order, payment, refund, price change or existing function deployment was triggered by the audit.
 
 Log window: **23:25–23:42 IST** (17:55–18:12 UTC). Fresh Meta/Razorpay snapshot: **23:43:29 IST**. The findings below apply to these two purchases and this inspected window.

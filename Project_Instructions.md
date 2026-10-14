@@ -1,10 +1,14 @@
 # Madikar Taila — Project Instructions
 
-Last updated: 14 October 2026.
+Last updated: 15 October 2026.
+
+## Current catalog and payment-ID checkpoint — 15 October
+
+The owner requested refreshed CSVs and the WhatsApp Razorpay `order_` prefix. Read docs/plans/CATALOG_REFRESH_AND_ORDER_PREFIX_2026-10-15.md. The full export now has 94 matching Meta/database variants with current prices and the extra Panchagavya removed. Only razorpay-webhook v34 was deployed, preserving the complete source, shared module and authentication. Fourteen provider-verified historical IDs were corrected; every other payment field and protected database/runtime state is unchanged. All 61 tests passed. The additional live pack test is owner-deferred. Payment-method metadata, full sync and shipping remain separate.
 
 ## Variant identity — current 14 October checkpoint
 
-The order-identity part of Phase 2 is deployed with the owner's explicit approval: whatsapp-webhook v95 and madikar-store v16. The bot resolves catalog-scoped ProductVariant IDs with parent/legacy/incoming fallbacks; website quotes prefer variant IDs with parent fallback. Current 94 variants all map to Meta; 95 Meta items, 59 website parents and 16 legacy lookups. Read PROJECT_HANDOFF.md and docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md. Latest branch is codex/catalog-export-variant-compatibility from be60d37. Preserve existing prices, payment behavior and other protected code. Current manual sync remains unsafe and uninvoked; its redesign is separate. CSV/checklist/audit are in docs/catalog/.
+The order-identity part of Phase 2 is deployed with the owner's explicit approval: whatsapp-webhook v95 and madikar-store v16. The bot resolves catalog-scoped ProductVariant IDs with parent/legacy/incoming fallbacks; website quotes prefer variant IDs with parent fallback. Current 94 variants all map to 94 Meta items, with 59 website parents and 16 legacy lookups. Read PROJECT_HANDOFF.md and docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md. Latest branch is codex/catalog-export-variant-compatibility. Preserve existing prices, payment behavior and other protected code. Current manual sync remains unsafe and uninvoked; its redesign is separate. CSV/checklist/audit are in docs/catalog/.
 
 ## Variant retailer IDs — Phase 1 checkpoint (history)
 

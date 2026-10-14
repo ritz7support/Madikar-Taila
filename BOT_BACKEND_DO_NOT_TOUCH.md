@@ -1,6 +1,10 @@
 # WhatsApp bot backend — do not change these for website work
 
-Last reviewed: 14 October 2026.
+Last reviewed: 15 October 2026.
+
+## Explicitly authorized Razorpay order-ID prefix — 15 October 2026
+
+The owner requested the `order_` prefix for WhatsApp provider order IDs after the live-payment audit. Only razorpay-webhook v34 was deployed: it prefers payment.entity.order_id and normalizes a bare fallback. The complete deployed function/shared module match local source; only the ID extraction changed. Fourteen historical IDs were individually verified with Razorpay and corrected in a guarded one-column transaction. All other payment fields, orders/items, catalog data, RPCs/security and five other functions are unchanged. All 61 mocked tests and bundle/source/auth checks passed. No live payment/message was triggered. Read docs/plans/CATALOG_REFRESH_AND_ORDER_PREFIX_2026-10-15.md. User-facing ORD references and payment-method metadata are unchanged; further live pack testing is owner-deferred.
 
 ## Explicitly authorized variant lookup — 14 October 2026
 

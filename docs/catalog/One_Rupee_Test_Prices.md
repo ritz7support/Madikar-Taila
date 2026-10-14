@@ -1,6 +1,6 @@
 # ₹1 test-price checklist
 
-Verified: 14 October 2026 at 11:43:29 pm IST. The owner corrected Mustard/Jaggery prices and completed successful live ₹1 purchases through WhatsApp and the website. The four test prices below remain deliberately ₹1 in both systems. Recheck both systems before going live.
+Snapshot: 14 October 2026 at 11:57:21 pm IST. These prices were deliberately set for testing and have not been changed. Recheck both systems before going live.
 
 | Product | Pack | Meta retailer ID | Meta price | Website price | Intended live price | Meta restored | Website restored |
 |---|---|---|---:|---:|---|---|---|
@@ -9,7 +9,7 @@ Verified: 14 October 2026 at 11:43:29 pm IST. The owner corrected Mustard/Jagger
 | Safflower Oil | 500 ml | adk09bs27q | ₹1 | ₹1 | To set | ☐ | ☐ |
 | Sunflower Oil | 500 ml | akdrt9pwv9 | ₹1 | ₹1 | To set | ☐ | ☐ |
 
-There are 4 ₹1 Meta items and 4 ₹1 website variants. Mustard 200 ml (rihd1eocew) is now ₹90 in both systems and has been removed from this test-price list.
+There are 4 ₹1 Meta items and 4 ₹1 website variants. Mustard 200 ml is now ₹90 in both systems and is no longer in this checklist.
 
 ## Before going live
 
@@ -21,4 +21,4 @@ There are 4 ₹1 Meta items and 4 ₹1 website variants. Mustard 200 ml (rihd1eo
 
 ## Resolved price differences
 
-Jaggery 1 kg (mt-jaggery-1000g) is now ₹85 in both systems. Mustard 200 ml is ₹90 in both. All 94 current Meta/website variant prices agree. The 22:39 CSV predates these corrections and the extra Panchagavya removal; do not upload that historical export unchanged. See ../plans/LIVE_PAYMENT_AUDIT_2026-10-14.md.
+Jaggery 1 kg (mt-jaggery-1000g) is now ₹85 in both systems. Mustard 200 ml is ₹90 in both. All 94 current prices agree. The refreshed CSV includes these owner corrections and excludes the removed extra Panchagavya item. The owner completed successful ₹1 purchases in both channels; the additional live test with a pack whose retailer ID differs from its parent is deferred at the owner’s request. See ../plans/LIVE_PAYMENT_AUDIT_2026-10-14.md.

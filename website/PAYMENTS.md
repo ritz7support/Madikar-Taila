@@ -1,4 +1,8 @@
-# Website checkout — updated 14 October 2026
+# Website checkout — updated 15 October 2026
+
+## Subsequent WhatsApp bookkeeping correction — 15 October
+
+The owner requested the `order_` prefix correction. Only razorpay-webhook v34 was deployed, and 14 historical WhatsApp provider order IDs were individually verified with Razorpay and corrected. Website runtime, user-facing ORD references, all amounts/statuses/timestamps and payment behavior are unchanged. All 61 mocked tests and full deployed source parity checks passed. Missing bot payment_method metadata remains separate. The CSV/checklist are refreshed from all 94 current Meta items; four ₹1 packs remain. The additional live test of a pack whose retailer ID differs from its parent is deferred at the owner's request. See ../docs/plans/CATALOG_REFRESH_AND_ORDER_PREFIX_2026-10-15.md.
 
 ## Owner-performed live payment check — 14 October
 

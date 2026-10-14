@@ -1,8 +1,10 @@
 # WhatsApp Flow App — Project Handoff
 
-Last reviewed: 14 October 2026. Start with PROJECT_HANDOFF.md, docs/plans/VARIANT_RETAILER_IDS.md and its Phase 1 report. Six function inventories/hashes/JWT settings are unchanged: whatsapp-webhook 94, whatsapp-flow 50, razorpay-webhook 33, sync-meta-catalog 11, retry-order-handoffs 6 and madikar-store 15. Latest recorded Site remains 31. Preserve the owner's help-line and admin/shipment work. Older counters/counts/prompts below are history.
+Last reviewed: 15 October 2026. Start with PROJECT_HANDOFF.md and docs/plans/CATALOG_REFRESH_AND_ORDER_PREFIX_2026-10-15.md. Current versions: whatsapp-webhook 95, whatsapp-flow 50, razorpay-webhook 34, sync-meta-catalog 11, retry-order-handoffs 6 and madikar-store 16. Authentication settings are preserved. Latest recorded Site remains 31. Preserve the owner's help-line and admin/shipment work. Older counters/counts/prompts below are history.
 
-## Phase 1 complete; runtime adoption separate
+The owner-approved variant lookup is deployed, and all 94 current Meta/database packs map correctly. The owner subsequently requested the Razorpay `order_` prefix correction: the paid handler now prefers the canonical payment entity ID, with a normalized order-entity fallback. Fourteen historical IDs were verified against Razorpay and corrected without changing any other payment field. All 61 mocked tests, bundle/source parity and preservation checks passed. No payment/message was initiated; the additional live pack test is owner-deferred. Missing payment-method metadata and variant-aware full sync remain separate.
+
+## Phase 1 complete; runtime adoption separate — historical checkpoint
 
 Migration 20261014120349_add_verified_variant_retailer_ids adds nullable variant retailer IDs with format/unique protection: 87 verified assignments and eight NULLs across 95 existing variants. Fresh Meta read found 90 items; the owner deferred three generated IDs. All Product IDs, 17 legacy lookup rows, existing variant fields/weights/prices, customer/order/payment data, RPCs/security/settings/jobs and runtime are unchanged. All 49 mocked tests and rollback-only SQL checks passed; the expiring GET-only reader was removed. No existing function deployment, full sync, customer message or payment processing occurred.
 
