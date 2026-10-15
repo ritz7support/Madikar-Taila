@@ -63,7 +63,7 @@ function selectProduct(id){
   state.selectedId=product.id;
   state.editing={...product,images:(product.images || []).map(x=>({...x})),
     variants:(product.variants || []).map(x=>({...x}))};
-  renderProductList();renderEditor();
+  renderProductList();renderEditor();watchStockSync(product.id);
 }
 function editorValues(){
   const editor=$('#product-editor');
@@ -82,6 +82,57 @@ function rememberEditor(){
   const values=editorValues();
   Object.assign(state.editing,values,{store_name:values.name,short_description:values.description,store_active:values.active});
 }
+
+function catalogChanged(){try{localStorage.setItem('madikar-catalog-changed',String(Date.now()))}catch{}}
+function stockSyncLabel(variant){
+  if(!variant.retailer_id)return 'Not linked to Meta';
+  const sync=variant.stock_sync;
+  if(!sync)return 'No stock change pending';
+  if(sync.status==='synced')return 'Meta: '+(sync.desired_availability==='in stock'?'In stock':'Out of stock')+' ✓';
+  if(sync.status==='error')return 'Meta needs attention: '+escapeHtml(sync.last_error||'Update not confirmed')+' <button type="button" data-retry-stock-sync="'+variant.id+'">Retry sync</button>';
+  return sync.status==='sending'?'Updating Meta…':'Meta update queued'+(sync.last_error?' · retry pending':'');
+}
+let stockWatch=0;
+function watchStockSync(productId){
+  const generation=++stockWatch;
+  if(!state.editing?.variants?.some(v=>['pending','sending'].includes(v.stock_sync?.status)))return;
+  const poll=async(attempt=0)=>{
+    if(generation!==stockWatch||String(state.selectedId)!==String(productId)||!state.token)return;
+    try{
+      const data=await adminApi('admin_stock_sync_status',{productId});
+      if(generation!==stockWatch||String(state.selectedId)!==String(productId))return;
+      for(const variant of state.editing.variants){
+        variant.stock_sync=data.sync.find(s=>s.variant_id===variant.id)||null;
+        const node=document.querySelector('[data-stock-sync="'+variant.id+'"]');
+        if(node)node.innerHTML=stockSyncLabel(variant);
+      }
+      if(attempt<20&&state.editing.variants.some(v=>['pending','sending'].includes(v.stock_sync?.status)))setTimeout(()=>poll(attempt+1),3000);
+    }catch{/* Keep the pending label; the server recovery job continues independently. */}
+  };
+  setTimeout(poll,1500);
+}
+async function setProductAvailability(available,button){
+  if(!state.editing?.id)return;
+  const productId=state.editing.id,pending=editorValues();
+  button.disabled=true;
+  try{
+    await adminApi('admin_product_availability',{productId,available});
+    catalogChanged();
+    await loadProducts(productId);
+    Object.assign(state.editing,{store_name:pending.name,short_description:pending.description,category:pending.category,images:pending.images,store_active:pending.active});
+    renderEditor();watchStockSync(productId);
+    setStatus(available?'All packs are in stock. Meta updates are queued.':'All packs are out of stock on the website. Meta updates are queued.','success');
+  }catch(error){setStatus(error.message,'error');button.disabled=false}
+}
+async function retryStockSync(variantId){
+  try{
+    await adminApi('admin_retry_stock_sync',{variantId});
+    const v=state.editing?.variants.find(v=>String(v.id)===String(variantId));
+    if(v){v.stock_sync={...v.stock_sync,status:'pending',last_error:null};const node=document.querySelector('[data-stock-sync="'+v.id+'"]');if(node)node.innerHTML=stockSyncLabel(v)}
+    watchStockSync(state.editing.id);
+  }catch(error){setStatus(error.message,'error')}
+}
+
 function renderEditor(){
   const p=state.editing;
   if(!p){$('#product-editor').innerHTML='<p class="empty">Select a product to edit it.</p>';return}
@@ -94,12 +145,11 @@ function renderEditor(){
   const packs=(p.variants || []).map(v=>`<tr data-variant-id="${v.id}">
     <td><input data-size value="${escapeHtml(v.size)}" maxlength="40" aria-label="Pack size"></td>
     <td><input data-price type="number" min="1" max="100000" step=".01" value="${escapeHtml(v.price)}" aria-label="Price in rupees"></td>
-    <td><input data-stock type="number" min="0" step="1" value="${v.inventory_quantity ?? ''}" placeholder="Unknown" aria-label="Units in stock"></td>
     <td><input data-shipping-weight type="number" min="1" max="2147483647" step="1" value="${escapeHtml(v.shipping_weight_grams ?? '')}" placeholder="Unknown" aria-label="Shipping weight in grams"></td>
-    <td><select data-availability aria-label="Availability"><option value="available" ${v.availability_status==='available'?'selected':''}>Available</option><option value="unavailable" ${v.availability_status!=='available'?'selected':''}>Unavailable</option></select></td>
-    <td><button type="button" data-save-variant="${v.id}">Save</button></td>
+    <td><select data-availability aria-label="Availability"><option value="available" ${v.availability_status==='available'?'selected':''}>In stock</option><option value="unavailable" ${v.availability_status!=='available'?'selected':''}>Out of stock</option></select></td>
+    <td><button type="button" data-save-variant="${v.id}">Save</button><div class="stock-sync" data-stock-sync="${v.id}">${stockSyncLabel(v)}</div></td>
   </tr>`).join('');
-  $('#product-editor').innerHTML=`<div class="editor-header"><div><p>${p.meta_linked?'Meta-linked record · store fields only':'Madikar store product'}</p><h2>${p.id?escapeHtml(p.display_name || p.name):'New product'}</h2></div><span class="pill ${p.store_active?'':'off'}">${p.store_active?'Listed':'Hidden'}</span></div>
+  $('#product-editor').innerHTML=`<div class="editor-header"><div><p>${p.meta_linked?'Meta-linked product':'Madikar store product'}</p><h2>${p.id?escapeHtml(p.display_name || p.name):'New product'}</h2></div><span class="pill ${p.store_active?'':'off'}">${p.store_active?'Listed':'Hidden'}</span></div>
     <div class="editor-grid"><div class="field"><label for="edit-name">Store name</label><input id="edit-name" maxlength="120" value="${escapeHtml(p.store_name || p.display_name || p.name || '')}"></div>
     <div class="field"><label for="edit-category">Category</label><input id="edit-category" list="store-categories" maxlength="60" value="${escapeHtml(p.category || '')}"><datalist id="store-categories">${[...new Set(state.products.map(x=>x.category))].map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist></div>
     <div class="field wide"><label for="edit-description">Description</label><textarea id="edit-description" maxlength="1000">${escapeHtml(p.short_description || p.description || '')}</textarea></div>
@@ -108,10 +158,10 @@ function renderEditor(){
     <h3>Product photos</h3><p class="help">The first image appears in the store. Use Upload photo for a new product image; up to six images per product.</p>
     <div id="image-list">${images || '<p class="empty">No images yet.</p>'}</div>
     <div class="image-actions"><button type="button" id="add-image-url">Add image URL</button><input id="image-upload" class="upload-input" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose product photo"><button type="button" id="upload-image" ${p.id?'':'disabled'}>Upload photo</button></div>
-    <h3>Packs, pricing & weight</h3><p class="help">Save each pack after editing. Leave stock blank when unknown. “Unavailable” prevents new orders for that pack.</p>
+    <h3>Packs, pricing & weight</h3><p class="help">Use In stock or Out of stock for each pack. Out-of-stock packs cannot be added to the bag. Saved availability also updates the matching Meta catalog item.</p><div class="stock-actions"><button type="button" id="product-out-of-stock" ${!p.id||!p.variants?.length?'disabled':''}>Mark all packs out of stock</button><button type="button" id="product-in-stock" ${!p.id||!p.variants?.length?'disabled':''}>Mark all packs in stock</button></div>
     <p class="help">Shipping weight is for one pack in whole grams, including its bottle, jar or wrapper. Exclude the outer delivery box. Leave blank if unknown. Saving weights does not change shipping charges yet.</p>
-    <div class="pack-table-scroll"><table class="pack-table"><thead><tr><th>Size</th><th>Price</th><th>Stock</th><th>Shipping weight (g)</th><th>Availability</th><th></th></tr></thead><tbody>${packs || '<tr><td colspan="6">No pack sizes yet.</td></tr>'}</tbody></table></div>
-    <div class="new-pack"><h4>Add a pack</h4><p class="help">Create another size for this product.</p><div class="new-pack-fields"><label>Pack size<input id="new-size" placeholder="e.g. 500 ml" aria-label="New pack size"></label><label>Price (₹)<input id="new-price" type="number" min="1" step=".01" placeholder="0.00" aria-label="New pack price"></label><label>Stock<input id="new-stock" type="number" min="0" step="1" placeholder="Unknown" aria-label="New pack stock"></label><label>Weight (g)<input id="new-shipping-weight" type="number" min="1" max="2147483647" step="1" placeholder="Unknown" aria-label="New pack shipping weight in grams"></label><label>Availability<select id="new-availability" aria-label="New pack availability"><option value="unavailable">Unavailable</option><option value="available">Available</option></select></label><button type="button" id="add-pack" ${p.id?'':'disabled'}>Add pack</button></div></div>`;
+    <div class="pack-table-scroll"><table class="pack-table"><thead><tr><th>Size</th><th>Price</th><th>Shipping weight (g)</th><th>Availability</th><th></th></tr></thead><tbody>${packs || '<tr><td colspan="5">No pack sizes yet.</td></tr>'}</tbody></table></div>
+    <div class="new-pack"><h4>Add a pack</h4><p class="help">Create another size for this product.</p><div class="new-pack-fields"><label>Pack size<input id="new-size" placeholder="e.g. 500 ml" aria-label="New pack size"></label><label>Price (₹)<input id="new-price" type="number" min="1" step=".01" placeholder="0.00" aria-label="New pack price"></label><label>Weight (g)<input id="new-shipping-weight" type="number" min="1" max="2147483647" step="1" placeholder="Unknown" aria-label="New pack shipping weight in grams"></label><label>Availability<select id="new-availability" aria-label="New pack availability"><option value="unavailable">Out of stock</option><option value="available">In stock</option></select></label><button type="button" id="add-pack" ${p.id?'':'disabled'}>Add pack</button></div></div>`;
 }
 async function saveProduct(){
   const values=editorValues();
@@ -128,9 +178,9 @@ async function saveVariant(row,adding=false){
   if(!weightInput.reportValidity())return;
   const pending=editorValues();
   const fields=adding?{size:$('#new-size').value,price:$('#new-price').value,
-      inventoryQuantity:$('#new-stock').value,availabilityStatus:$('#new-availability').value,productId:state.editing.id}
+      availabilityStatus:$('#new-availability').value,productId:state.editing.id}
     :{size:row.querySelector('[data-size]').value,price:row.querySelector('[data-price]').value,
-      inventoryQuantity:row.querySelector('[data-stock]').value,availabilityStatus:row.querySelector('[data-availability]').value,
+      availabilityStatus:row.querySelector('[data-availability]').value,
       id:row.dataset.variantId};
   fields.shippingWeightGrams=weightInput.value;
   try{
@@ -140,7 +190,8 @@ async function saveVariant(row,adding=false){
     Object.assign(state.editing,{store_name:pending.name,short_description:pending.description,
       category:pending.category,images:pending.images,store_active:pending.active});
     renderEditor();
-    setStatus(adding?'Pack added.':'Pack saved.','success');
+    setStatus(adding?'Pack added.':'Pack saved. Meta availability is shown beside each pack.','success');
+    catalogChanged();watchStockSync(productId);
   }
   catch(error){setStatus(error.message,'error')}
 }
@@ -260,6 +311,8 @@ $('#add-product').addEventListener('click',()=>{
 $('#product-editor').addEventListener('click',event=>{
   const target=event.target;
   if(target.id==='save-product')saveProduct();
+  if(target.id==='product-out-of-stock'||target.id==='product-in-stock')void setProductAvailability(target.id==='product-in-stock',target);
+  if(target.dataset.retryStockSync)void retryStockSync(target.dataset.retryStockSync);
   if(target.id==='add-image-url'){rememberEditor();state.editing.images.push({url:'',alt:'',kind:'product_photo'});renderEditor()}
   if(target.dataset.removeImage!==undefined){rememberEditor();state.editing.images.splice(Number(target.dataset.removeImage),1);renderEditor()}
   if(target.id==='upload-image')uploadImage();

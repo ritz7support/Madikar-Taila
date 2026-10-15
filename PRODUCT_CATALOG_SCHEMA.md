@@ -1,6 +1,14 @@
-# Product catalog schema — current checkpoint 14 October 2026
+# Product catalog schema — current checkpoint 15 October 2026
 
-## Current variant identity — 14 October 2026
+## Availability and current catalog — 15 October 2026
+
+The fresh Meta read contains 94 items, all mapped to 94 existing variants under 59 website parents; 16 legacy lookup rows remain. The owner removed extra Meta item dg4i4tvblo. All current prices match, including four intentional ₹1 test packs. The CSV alone now uses Supabase image links; no live Meta image fields were changed.
+
+Migration 20261015095016_store_catalog_availability adds a private, RLS-protected availability queue keyed by ProductVariant.id, with catalog/retailer identity, desired availability, revision, lease, retries and verified result. Variant availability changes enqueue atomically. Service-only RPCs set one parent's packs, claim jobs, record results or retry. The store-catalog-availability-recovery cron calls a separately authenticated website endpoint every minute only when work is due. No backfill or product data change was made.
+
+Admin edits use available/unavailable (In stock / Out of stock), preserving existing inventory_quantity when omitted. All 94 current quantities remain NULL. Meta updates contain only availability ('in stock' / 'out of stock') for the verified exact pack, never numeric inventory, price, images, parent IDs or other fields. Confirmed read-back is required before marking synced. Concurrent newer edits retain their revision and retry; expired leases recover with an eight-attempt limit. See docs/plans/STORE_SPEED_AND_STOCK_2026-10-15.md for tests and limits. Full catalog sync remains deferred and must not be invoked.
+
+## Variant identity — 14 October 2026 (history)
 
 All 94 current variants have unique populated retailer IDs verified against a fresh 95-item Meta snapshot. There are 75 Product rows: 59 website parents and 16 legacy lookups. The owner filled seven IDs after Phase 1 and separately removed Panchagavya four-pack variant 105 / inactive lookup 81; parent 80 and single Bar 104 remain. No current data changed during the compatibility patch. Generated Meta item dg4i4tvblo remains unassigned.
 

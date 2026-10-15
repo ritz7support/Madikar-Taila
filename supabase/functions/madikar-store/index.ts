@@ -1,5 +1,6 @@
 import { createCheckoutService } from './checkout.ts';
 import { createShipmentNotificationService } from './shipment.ts';
+import { createCatalogAvailabilityService } from './availability.ts';
 // Deployed as the madikar-store Supabase Edge Function.
 // The existing Sites Worker and Vercel each hold a separate private signing key.
 const PUBLIC_KEYS = [
@@ -109,13 +110,16 @@ function productFields(body) {
 function variantFields(body) {
   const size = adminText(body.size,40);
   const price = Number(body.price);
-  const inventory = body.inventoryQuantity === null || body.inventoryQuantity === '' ? null : Number(body.inventoryQuantity);
+  const hasInventory = Object.prototype.hasOwnProperty.call(body,'inventoryQuantity');
+  const inventory = body.inventoryQuantity == null || body.inventoryQuantity === '' ? null : Number(body.inventoryQuantity);
   const status = body.availabilityStatus;
   if (!size || !Number.isFinite(price) || price < 1 || price > 100000 ||
     Math.round(price * 100) !== price * 100 ||
     (inventory !== null && (!Number.isInteger(inventory) || inventory < 0 || inventory > 1000000)) ||
     !['unverified','available','unavailable'].includes(status)) throw new Error('Invalid pack details');
-  const fields = {size,price,inventory_quantity:inventory,availability_status:status};
+  const fields = {size,price,availability_status:status};
+  // New admin controls use availability only; old clients can still preserve their value.
+  if (hasInventory) fields.inventory_quantity=inventory;
   // Old admin tabs omit this field: preserve a previously saved weight on PATCH.
   if (Object.prototype.hasOwnProperty.call(body,'shippingWeightGrams')) {
     const raw = body.shippingWeightGrams;
@@ -131,18 +135,47 @@ function variantFields(body) {
 async function adminAction(body) {
   if (body.action === 'admin_me') return {label:'Team access'};
   if (body.action === 'admin_catalog') {
-    const [products,variants] = await Promise.all([
+    const [products,variants,sync] = await Promise.all([
       database('/rest/v1/Product?select=id,store_id,store_name,name,category,short_description,images,store_sort_order,store_active,catalog_id&store_id=not.is.null&order=store_sort_order.asc'),
-      database('/rest/v1/ProductVariant?select=id,product_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams&order=position.asc,id.asc')
+      database('/rest/v1/ProductVariant?select=id,product_id,retailer_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams&order=position.asc,id.asc'),
+      database('/rest/v1/store_catalog_availability?select=variant_id,status,attempts,last_error,synced_at,desired_availability')
     ]);
     const byId = new Map();
     for (const variant of variants.payload || []) {
-      const list = byId.get(variant.product_id) || []; list.push(variant); byId.set(variant.product_id,list);
+      const list = byId.get(variant.product_id) || [];
+      list.push({...variant,stock_sync:(sync.payload || []).find(row=>row.variant_id===variant.id) || null});
+      byId.set(variant.product_id,list);
     }
     return {products:(products.payload || []).map(p => ({
       ...p,display_name:p.store_name || p.name,meta_linked:p.catalog_id !== 'madikar-store',
       variants:byId.get(p.id) || []
     }))};
+  }
+  if (body.action === 'admin_product_availability') {
+    const product=await storeProduct(body.productId);
+    if (!product || typeof body.available!=='boolean') throw Object.assign(new Error('Invalid product availability'),{status:400});
+    const updated=await database('/rest/v1/rpc/store_set_product_availability',{method:'POST',body:JSON.stringify({p_product_id:product.id,p_available:body.available})});
+    scheduleCatalogAvailability(product.id);
+    return updated.payload;
+  }
+  if (body.action === 'admin_retry_stock_sync') {
+    const id=adminId(body.variantId);
+    if (!id) throw Object.assign(new Error('Invalid pack'),{status:400});
+    const record=await database('/rest/v1/ProductVariant?select=id,product_id&id=eq.'+id+'&limit=1');
+    const product=await storeProduct(record.payload?.[0]?.product_id);
+    if (!product) throw Object.assign(new Error('Pack not found'),{status:404});
+    await database('/rest/v1/rpc/store_retry_catalog_availability',{method:'POST',body:JSON.stringify({p_variant_id:id})});
+    scheduleCatalogAvailability(product.id);
+    return {ok:true};
+  }
+  if (body.action === 'admin_stock_sync_status') {
+    const product=await storeProduct(body.productId);
+    if (!product) throw Object.assign(new Error('Product not found'),{status:404});
+    const variants=await database('/rest/v1/ProductVariant?select=id&product_id=eq.'+product.id);
+    const ids=(variants.payload || []).map(v=>v.id);
+    if (!ids.length) return {sync:[]};
+    const sync=await database('/rest/v1/store_catalog_availability?select=variant_id,status,attempts,last_error,synced_at,desired_availability&variant_id=in.('+ids.join(',')+')');
+    return {sync:sync.payload || []};
   }
   if (body.action === 'admin_orders') {
     const page = Number(body.page);
@@ -235,6 +268,7 @@ async function adminAction(body) {
       const response=await database('/rest/v1/ProductVariant?id=eq.' + id,{
         method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(fields)
       });
+      scheduleCatalogAvailability(product.id);
       return {variant:response.payload?.[0]};
     }
     product=await storeProduct(body.productId);
@@ -244,6 +278,7 @@ async function adminAction(body) {
       method:'POST',headers:{Prefer:'return=representation'},
       body:JSON.stringify({...fields,product_id:product.id,position:Number(variants.payload?.[0]?.position ?? -1)+1})
     });
+    scheduleCatalogAvailability(product.id);
     return {variant:response.payload?.[0]};
   }
   if (body.action === 'admin_upload_image') {
@@ -274,6 +309,10 @@ async function adminAction(body) {
 
 const checkoutService = createCheckoutService({database,env:key=>Deno.env.get(key),background:promise=>EdgeRuntime.waitUntil(promise)});
 const shipmentService = createShipmentNotificationService({database,env:key=>Deno.env.get(key)});
+const catalogAvailabilityService = createCatalogAvailabilityService({database,env:key=>Deno.env.get(key)});
+function scheduleCatalogAvailability(productId){
+  EdgeRuntime.waitUntil(catalogAvailabilityService.work(productId).catch(()=>console.error('Catalog availability will be retried by recovery.')));
+}
 function scheduleShipmentNotification(orderId){
   EdgeRuntime.waitUntil(shipmentService.work(orderId).catch(()=>console.error('Shipment notification will be reconciled by recovery.')));
 }
@@ -281,6 +320,12 @@ function scheduleShipmentNotification(orderId){
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return result({error:'Method not allowed'},405);
   const path = new URL(request.url).pathname;
+  if (path.endsWith('/catalog-availability-recovery')) {
+    try {
+      if (!await checkoutService.authorizeRecovery(request.headers.get('x-checkout-recovery'))) return result({error:'Unauthorized'},401);
+      return result(await catalogAvailabilityService.work());
+    } catch { return result({error:'Catalog availability recovery temporarily unavailable'},503); }
+  }
   if (path.endsWith('/shipment-recovery')) {
     try {
       if (!await checkoutService.authorizeRecovery(request.headers.get('x-checkout-recovery'))) return result({error:'Unauthorized'},401);
@@ -333,7 +378,7 @@ Deno.serve(async (request) => {
         const list = variantsByProduct.get(variant.product_id) || [];
         list.push({size:variant.size,price:Number(variant.price),
           available:variant.availability_status === 'available' && variant.inventory_quantity !== 0,
-          orderable:variant.availability_status !== 'unavailable' && variant.inventory_quantity !== 0,
+          orderable:variant.availability_status === 'available' && variant.inventory_quantity !== 0,
           availabilityStatus:variant.availability_status,inventoryQuantity:variant.inventory_quantity});
         variantsByProduct.set(variant.product_id,list);
       }

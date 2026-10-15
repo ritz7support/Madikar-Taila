@@ -25,8 +25,8 @@ function page(replies,path='/'){
     Object.assign(location,{pathname:next.pathname,search:next.search,href:next.href});
   };
   const context = vm.createContext({
-    document:{title:'Madikar Taila',body:{classList:{toggle(){}}},querySelector:element,addEventListener(){}},
-    window:{addEventListener(){}},location,history:{replaceState:navigate,pushState:navigate},
+    document:{title:'Madikar Taila',body:{classList:{toggle(){}}},querySelector:element,getElementById:()=>({scrollIntoView(){}}),addEventListener(){}},
+    window:{addEventListener(){},scrollTo(){}},location,history:{replaceState:navigate,pushState:navigate},
     localStorage:{getItem(){return null}},URL,URLSearchParams,AbortSignal,
     setTimeout(resolve,delay){delays.push(delay);queueMicrotask(resolve)},
     fetch:async (url,options) => {
@@ -118,4 +118,24 @@ test('legacy query links redirect to the product route and unknown products show
   const missing=page([ok()],'/products/not-in-catalog'); await settled(missing);
   assert.match(missing.element('#product-page').innerHTML,/Product not found/);
   assert.doesNotMatch(missing.element('#product-page').innerHTML,/Groundnut Oil/);
+});
+test('returning to All products reuses the loaded catalog and preserves the bag',async()=>{
+ const p=page([ok()],'/products/groundnut-oil');await settled(p);
+ vm.runInContext("state.cart={'p1:0':2};navigateStore('/#shop')",p.context);
+ assert.equal(p.calls(),1);assert.equal(p.context.location.pathname,'/');
+ assert.equal(p.element('#product-page').hidden,true);
+ assert.equal(vm.runInContext("state.cart['p1:0']",p.context),2);
+ assert.match(p.element('#product-grid').innerHTML,/Groundnut Oil/);
+});
+test('out-of-stock packs cannot be added or increased and block checkout in a previously saved bag',async()=>{
+ const p=page([Response.json({products:[{...product,variants:[{...product.variants[0],available:false,orderable:false}]}]})]);await settled(p);
+ vm.runInContext("addToCart(products[0],0)",p.context);assert.equal(vm.runInContext('Object.keys(state.cart).length',p.context),0);
+ vm.runInContext("state.cart={'p1:0':2};renderCart()",p.context);
+ assert.equal(p.element('#checkout-open').disabled,true);assert.match(p.element('#cart-items').innerHTML,/Out of stock/);
+ assert.match(p.element('#cart-items').innerHTML,/data-qty="1"[^>]+disabled/);
+});
+test('product page contains only the copy action, with no WhatsApp-specific field',async()=>{
+ const p=page([ok()],'/products/groundnut-oil');await settled(p);
+ assert.match(p.element('#product-page').innerHTML,/Copy product link/);
+ assert.doesNotMatch(p.element('#product-page').innerHTML,/product-share-url|Product link for WhatsApp/);
 });

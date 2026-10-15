@@ -77,3 +77,5 @@
   .checkout-fields label {font-size:10px}
   .checkout-fields input {height:42px}
 }
+.checkout-confirming{text-align:center;padding:36px 20px}.checkout-confirming[hidden]{display:none}.checkout-confirming h3{font:28px Georgia,serif;margin:18px 0 10px}.confirmation-spinner{width:38px;height:38px;border:3px solid #d9dfd6;border-top-color:#123321;border-radius:50%;margin:auto;animation:confirm-spin .8s linear infinite}@keyframes confirm-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.confirmation-spinner{animation:none}}
+.payment-confirming .checkout-heading{position:absolute;top:18px;right:20px;padding:0;border:0}.payment-confirming .checkout-heading>div{display:none}.payment-confirming .checkout-confirming{padding-top:65px}

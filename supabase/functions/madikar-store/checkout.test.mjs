@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
+import {setImmediate} from 'node:timers/promises';
 import {createCheckoutService,validateDelivery} from './checkout.ts';
 const address={name:'Test Buyer',phone:'9000000001',email:'',line1:'1 Test Street',line2:'',city:'Dharwad',state:'Karnataka',postalCode:'580001',country:'India'};
 const body=()=>({sessionId:crypto.randomUUID(),token:'a'.repeat(64),clientHash:'b'.repeat(64),address:{...address},lines:[{id:'p1',variant:0,quantity:2}]});
@@ -39,6 +40,9 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRe
     if(url===env.N8N_WEBHOOK_URL){state.handoffs.push(JSON.parse(options.body));return new Response('ok')}
     const expected=state.sessions[0]?.mode||mode;
     assert.equal(options.headers.Authorization,'Basic '+btoa(env['RAZORPAY_'+expected.toUpperCase()+'_KEY_ID']+':'+env['RAZORPAY_'+expected.toUpperCase()+'_KEY_SECRET']));
+    if(state.providerReads && (url.endsWith('/payments/pay_fixture')||url.endsWith('/orders/order_fixture'))){
+      await new Promise(resolve=>state.providerReads.set(url.split('/').at(-1),resolve));
+    }
     if(url.endsWith('/orders')&&options.method==='POST'){state.remoteOrders++;return Response.json({id:'order_fixture',amount:JSON.parse(options.body).amount,currency:'INR'})}
     if(url.endsWith('/orders/order_fixture/payments'))return Response.json({items:[state.payment]});
     if(url.endsWith('/orders/order_fixture'))return Response.json({id:'order_fixture',amount:40000,currency:'INR',status:'paid'});
@@ -134,4 +138,17 @@ test('WhatsApp tracking failure cannot block payment result or n8n',async()=>{
   assert.equal((await f.verify(b)).status,'paid');await f.flush();
   f.state.due=[f.state.sessions[0]];await f.service.work();
   assert.equal(f.state.handoffs.length,1);assert.equal(f.state.orders[0].status,'processing');
+});
+test('payment and order reads overlap, and neither alone can produce success',async()=>{
+ const f=fixture(),b=body();await f.service.create(b);f.state.providerReads=new Map();
+ const verification=f.verify(b);
+ for(let turn=0;turn<100&&f.state.providerReads.size<2;turn++)await new Promise(resolve=>setTimeout(resolve,1));
+ assert.equal(f.state.providerReads.size,2);assert.equal(f.state.finalized,0);
+ f.state.providerReads.get('pay_fixture')();await setImmediate();assert.equal(f.state.finalized,0);
+ f.state.providerReads.get('order_fixture')();assert.equal((await verification).status,'paid');
+ assert.equal(f.state.finalized,1);await f.flush();
+});
+test('a pack marked out of stock is rejected before any payment order is created',async()=>{
+ const f=fixture({catalogVariants:[{id:10,product_id:1,size:'500 ml',price:175,inventory_quantity:null,availability_status:'unavailable',retailer_id:'pack-500'}]});
+ await assert.rejects(f.service.create(body()),/unavailable/);assert.equal(f.state.remoteOrders,0);assert.equal(f.state.finalized,0);
 });

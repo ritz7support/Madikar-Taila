@@ -29,11 +29,12 @@ function imageFor(p){
 const state={category:'All products',query:'',sort:'featured',cart:{},selection:{},detail:null};
 let catalogState = 'loading';
 let catalogLoading = false;
+let catalogVerifiedAt=0;
 try{state.cart=JSON.parse(localStorage.getItem('madikar-cart')||'{}')||{}}catch{}
 const saveCart=()=>{try{localStorage.setItem('madikar-cart',JSON.stringify(state.cart))}catch{}};
 const variantsOf=p=>p.variants;
 const selectedVariant=p=>variantsOf(p)[state.selection[p.id]||0];
-const availabilityLabel=v=>v.orderable===false?'Out of stock':v.available===true?(v.inventoryQuantity==null?'Available':`${v.inventoryQuantity} in stock`):'Confirm availability';
+const availabilityLabel=v=>v.orderable===false?'Out of stock':v.available===true?'In stock':'Confirm availability';
 
 function renderCategories(){
   $('#category-list').innerHTML=categories().map(c=>`<button type="button" data-category="${escapeXml(c)}" class="${state.category===c?'active':''}" aria-pressed="${state.category===c}">${escapeXml(c)} <span>${c==='All products'?products.length:products.filter(p=>p.category===c).length}</span></button>`).join('');
@@ -58,17 +59,17 @@ function renderProducts(){
     const selected=state.selection[p.id]||0, v=p.variants[selected];
     const opts=p.variants.map((v,i)=>`<option value="${i}" ${i===selected?'selected':''}>${escapeXml(v.size)}${v.orderable===false?' — out of stock':''}</option>`).join('');
     const link=escapeXml(productUrl(p));
-    return `<article class="product-card" data-id="${escapeXml(p.id)}"><a class="product-media" href="${link}" data-action="detail" aria-label="View ${escapeXml(p.name)} details"><img loading="lazy" src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt ? 'supplied-product-image' : ''}">${p.imageAlt ? '' : '<img class="brand-stamp" src="/assets/brand-stamp.svg" alt="" aria-hidden="true"><span class="image-label">Illustrative image</span>'}</a><div class="product-info"><div class="category-kicker">${escapeXml(p.category)}</div><a class="product-title" href="${link}" data-action="detail">${escapeXml(p.name)}</a><p class="product-note">${escapeXml(p.note)}</p><div class="card-bottom"><select class="variant-select" data-action="variant" aria-label="Choose size for ${escapeXml(p.name)}">${opts}</select><div class="availability-label">${availabilityLabel(v)}</div><div class="price-row"><strong class="price">${money(v.price)}</strong><button class="add-button" type="button" data-action="add" aria-label="Add ${escapeXml(p.name)}, ${escapeXml(v.size)}, to bag" ${v.orderable===false?'disabled':''}>+</button></div></div></div></article>`
+    return `<article class="product-card" data-id="${escapeXml(p.id)}"><a class="product-media" href="${link}" data-action="detail" aria-label="View ${escapeXml(p.name)} details"><img loading="lazy" decoding="async" width="640" height="640" src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt ? 'supplied-product-image' : ''}">${p.imageAlt ? '' : '<img class="brand-stamp" src="/assets/brand-stamp.svg" alt="" aria-hidden="true"><span class="image-label">Illustrative image</span>'}</a><div class="product-info"><div class="category-kicker">${escapeXml(p.category)}</div><a class="product-title" href="${link}" data-action="detail">${escapeXml(p.name)}</a><p class="product-note">${escapeXml(p.note)}</p><div class="card-bottom"><select class="variant-select" data-action="variant" aria-label="Choose size for ${escapeXml(p.name)}">${opts}</select><div class="availability-label">${availabilityLabel(v)}</div><div class="price-row"><strong class="price">${money(v.price)}</strong><button class="add-button" type="button" data-action="add" aria-label="Add ${escapeXml(p.name)}, ${escapeXml(v.size)}, to bag" ${v.orderable===false?'disabled':''}>+</button></div></div></div></article>`
   }).join('');
 }
 function cartEntries(){return Object.entries(state.cart).filter(([,q])=>q>0).map(([key,qty])=>{const [id,index]=key.split(':');const p=byId(id),v=p?.variants[Number(index)];return p&&v?{key,qty,p,v}:null}).filter(Boolean)}
 function renderCart(){
   const entries=cartEntries(), count=entries.reduce((a,e)=>a+e.qty,0), total=entries.reduce((a,e)=>a+e.qty*e.v.price,0);
   $('#cart-count').textContent=count;$('#cart-total').textContent=money(total);
-  $('#cart-items').innerHTML=entries.length?entries.map(e=>`<div class="cart-item" data-key="${escapeXml(e.key)}"><div class="cart-thumb branded-photo"><img src="${escapeXml(imageFor(e.p))}" alt="" class="${e.p.imageAlt ? 'supplied-product-image' : ''}">${e.p.imageAlt ? '' : '<img class="brand-stamp" src="/assets/brand-stamp.svg" alt="" aria-hidden="true">'}</div><div><h3>${escapeXml(e.p.name)}</h3><small>${escapeXml(e.v.size)}</small><div class="qty-controls"><button type="button" data-qty="-1" aria-label="Remove one ${escapeXml(e.p.name)}">−</button><span>${e.qty}</span><button type="button" data-qty="1" aria-label="Add one ${escapeXml(e.p.name)}">+</button></div></div><strong>${money(e.qty*e.v.price)}</strong></div>`).join(''):'<div class="cart-empty"><strong>Your bag is waiting.</strong><p>Add something lovely from the collection.</p></div>';
-  $('#checkout-open').disabled=!entries.length;
+  $('#cart-items').innerHTML=entries.length?entries.map(e=>`<div class="cart-item" data-key="${escapeXml(e.key)}"><div class="cart-thumb branded-photo"><img src="${escapeXml(imageFor(e.p))}" alt="" class="${e.p.imageAlt ? 'supplied-product-image' : ''}">${e.p.imageAlt ? '' : '<img class="brand-stamp" src="/assets/brand-stamp.svg" alt="" aria-hidden="true">'}</div><div><h3>${escapeXml(e.p.name)}</h3><small>${escapeXml(e.v.size)}${e.v.orderable===false?' · Out of stock':''}</small><div class="qty-controls"><button type="button" data-qty="-1" aria-label="Remove one ${escapeXml(e.p.name)}">−</button><span>${e.qty}</span><button type="button" data-qty="1" aria-label="Add one ${escapeXml(e.p.name)}" ${e.v.orderable===false?'disabled':''}>+</button></div></div><strong>${money(e.qty*e.v.price)}</strong></div>`).join(''):'<div class="cart-empty"><strong>Your bag is waiting.</strong><p>Add something lovely from the collection.</p></div>';
+  $('#checkout-open').disabled=!entries.length||entries.some(e=>e.v.orderable===false)||catalogState!=='ready';
 }
-function addToCart(p,index){if(p.variants[index]?.orderable===false)return;const key=`${p.id}:${index}`;state.cart[key]=(state.cart[key]||0)+1;saveCart();renderCart();openCart()}
+async function addToCart(p,index){if(Date.now()-catalogVerifiedAt>30000)await loadCatalog(true);p=products.find(item=>item.id===p.id);if(catalogState!=='ready'||!p?.variants[index]||p.variants[index].orderable===false)return;const key=`${p.id}:${index}`;state.cart[key]=(state.cart[key]||0)+1;saveCart();renderCart();openCart()}
 function openCart(){$('#drawer-overlay').hidden=false;$('#cart-drawer').classList.add('open');$('#cart-drawer').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';$('#cart-close').focus()}
 function closeCart(){$('#drawer-overlay').hidden=true;$('#cart-drawer').classList.remove('open');$('#cart-drawer').setAttribute('aria-hidden','true');document.body.style.overflow=''}
 const detailText = text => escapeXml(text).replaceAll('\n','<br>');
@@ -81,6 +82,7 @@ function renderRoute(){
   const slug=slugFromPath();
   const isDetail=Boolean(slug || (legacyId && catalogState==='ready'));
   document.body.classList.toggle('product-route',isDetail);
+  document.documentElement?.classList.toggle('product-route',isDetail);
   $('#product-page').hidden=!isDetail;
   if(!isDetail){state.detail=null;document.title=storeTitle;return}
   if(catalogState!=='ready'){
@@ -100,32 +102,50 @@ function renderRoute(){
   document.title=`${p.name} | Madikar Taila`;
   const v=selectedVariant(p);
   const section=(title,value)=>value?.trim()?`<section class="detail-section"><h2>${title}</h2><p>${detailText(value)}</p></section>`:'';
-  $('#product-page').innerHTML=`<a class="detail-back" href="/#shop">← All products</a><div class="detail-grid"><div class="detail-visual"><img src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt?'supplied-product-image':''}"></div><div class="detail-info"><div class="category-kicker">${escapeXml(p.category)}</div><h1>${escapeXml(p.name)}</h1><p class="detail-note">${detailText(p.note)}</p><label for="detail-variant">Choose pack size</label><select id="detail-variant">${p.variants.map((variant,i)=>`<option value="${i}" ${i===(state.selection[p.id]||0)?'selected':''}>${escapeXml(variant.size)}${variant.orderable===false?' — out of stock':''}</option>`).join('')}</select><div class="detail-price" id="detail-price">${money(v.price)}</div><div class="availability-label" id="detail-availability">${availabilityLabel(v)}</div><button type="button" class="detail-add" id="detail-add" ${v.orderable===false?'disabled':''}>Add to bag</button><div class="product-share"><div class="share-label">Product link for WhatsApp</div><div class="product-share-row"><input id="product-share-url" type="url" readonly aria-label="Product link" value="${escapeXml(new URL(productUrl(p),location.origin).href)}"><button type="button" id="copy-product-link">Copy link</button></div><p id="product-share-status" role="status" aria-live="polite"></p></div></div></div><div class="detail-sections">${section('Traditional benefits',p.traditional_benefits)}${section('Extraction & craft',p.extraction_craft)}${section('Ingredients & more',p.ingredients_and_more)}</div>`;
+  $('#product-page').innerHTML=`<a class="detail-back" href="/#shop">← All products</a><div class="detail-grid"><div class="detail-visual"><img fetchpriority="high" decoding="async" width="800" height="800" src="${escapeXml(imageFor(p))}" alt="${escapeXml(p.imageAlt || `Illustrative image for ${p.name}`)}" class="${p.imageAlt?'supplied-product-image':''}"></div><div class="detail-info"><div class="category-kicker">${escapeXml(p.category)}</div><h1>${escapeXml(p.name)}</h1><p class="detail-note">${detailText(p.note)}</p><label for="detail-variant">Choose pack size</label><select id="detail-variant">${p.variants.map((variant,i)=>`<option value="${i}" ${i===(state.selection[p.id]||0)?'selected':''}>${escapeXml(variant.size)}${variant.orderable===false?' — out of stock':''}</option>`).join('')}</select><div class="detail-price" id="detail-price">${money(v.price)}</div><div class="availability-label" id="detail-availability">${availabilityLabel(v)}</div><button type="button" class="detail-add" id="detail-add" ${v.orderable===false?'disabled':''}>Add to bag</button><div class="product-share"><button type="button" id="copy-product-link">Copy product link</button><p id="product-share-status" role="status" aria-live="polite"></p></div></div></div><div class="detail-sections">${section('Traditional benefits',p.traditional_benefits)}${section('Extraction & craft',p.extraction_craft)}${section('Ingredients & more',p.ingredients_and_more)}</div>`;
 }
 
 $('#category-list').addEventListener('click',e=>{const b=e.target.closest('[data-category]');if(!b)return;state.category=b.dataset.category;renderCategories();renderProducts()});
 $('#product-grid').addEventListener('click',e=>{if(e.target.closest('[data-action="retry-catalog"]')) void loadCatalog()});
-$('#product-grid').addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(!target)return;const card=target.closest('[data-id]'),p=byId(card?.dataset.id);if(!p)return;if(target.dataset.action==='detail'){if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();history.pushState({},'',productUrl(p));renderRoute();window.scrollTo(0,0)}if(target.dataset.action==='add')addToCart(p,state.selection[p.id]||0)});
+$('#product-grid').addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(!target)return;const card=target.closest('[data-id]'),p=byId(card?.dataset.id);if(!p)return;if(target.dataset.action==='detail'){if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();navigateStore(productUrl(p))}if(target.dataset.action==='add')addToCart(p,state.selection[p.id]||0)});
 $('#product-grid').addEventListener('change',e=>{if(e.target.dataset.action!=='variant')return;const p=byId(e.target.closest('[data-id]')?.dataset.id);if(!p)return;state.selection[p.id]=Number(e.target.value);const card=e.target.closest('.product-card'),v=selectedVariant(p);card.querySelector('.price').textContent=money(v.price);card.querySelector('.availability-label').textContent=availabilityLabel(v);card.querySelector('.add-button').disabled=v.orderable===false;card.querySelector('.add-button').setAttribute('aria-label',`Add ${p.name}, ${v.size}, to bag`)});
 $('#search-input').addEventListener('input',e=>{state.query=e.target.value.trim().toLowerCase();renderProducts()});
 $('#sort-select').addEventListener('change',e=>{state.sort=e.target.value;renderProducts()});
-$('#search-open').addEventListener('click',()=>{if(location.pathname!=='/'){location.href='/#shop';return}location.hash='shop';$('#search-input').focus()});
+$('#search-open').addEventListener('click',()=>{navigateStore('/#shop');$('#search-input').focus()});
 $('#clear-filters').addEventListener('click',()=>{state.category='All products';state.query='';$('#search-input').value='';renderCategories();renderProducts()});
 $('#cart-open').addEventListener('click',openCart);$('#cart-close').addEventListener('click',closeCart);$('#drawer-overlay').addEventListener('click',closeCart);
-$('#cart-items').addEventListener('click',e=>{const b=e.target.closest('[data-qty]');if(!b)return;const key=b.closest('[data-key]').dataset.key;state.cart[key]=(state.cart[key]||0)+Number(b.dataset.qty);if(state.cart[key]<=0)delete state.cart[key];saveCart();renderCart()});
+$('#cart-items').addEventListener('click',e=>{const b=e.target.closest('[data-qty]');if(!b)return;const key=b.closest('[data-key]').dataset.key;if(Number(b.dataset.qty)>0&&cartEntries().find(e=>e.key===key)?.v.orderable===false)return;state.cart[key]=(state.cart[key]||0)+Number(b.dataset.qty);if(state.cart[key]<=0)delete state.cart[key];saveCart();renderCart()});
 $('#product-page').addEventListener('change',e=>{if(e.target.id==='detail-variant'&&state.detail){state.selection[state.detail]=Number(e.target.value);const v=selectedVariant(byId(state.detail));$('#detail-price').textContent=money(v.price);$('#detail-availability').textContent=availabilityLabel(v);$('#detail-add').disabled=v.orderable===false;renderProducts()}});
 $('#product-page').addEventListener('click',async e=>{
   if(e.target.closest('[data-action="retry-catalog"]')) void loadCatalog();
   if(e.target.id==='detail-add'&&state.detail){const p=byId(state.detail),i=state.selection[p.id]||0;if(p.variants[i]?.orderable===false)return;addToCart(p,i)}
   if(e.target.id==='copy-product-link'&&state.detail){
-    const input=$('#product-share-url'),status=$('#product-share-status');
-    try{await navigator.clipboard.writeText(input.value);status.textContent='Link copied. Paste it into the WhatsApp catalog or a chat.'}
-    catch{input.focus();input.select();status.textContent='Select and copy this link to use it in WhatsApp.'}
+    const status=$('#product-share-status'),link=new URL(productUrl(byId(state.detail)),location.origin).href;
+    try{await navigator.clipboard.writeText(link);status.textContent='Product link copied.'}
+    catch{status.textContent='Copy this product link: '+link;}
   }
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCart()});
+function navigateStore(path,{replace=false}={}){
+  const url=new URL(path,location.origin);
+  history[replace?'replaceState':'pushState']({},'',url.pathname+url.search+url.hash);
+  renderRoute();
+  const target=url.hash && document.getElementById(decodeURIComponent(url.hash.slice(1)));
+  if(target)target.scrollIntoView({behavior:'instant',block:'start'});else window.scrollTo({top:0,left:0,behavior:'instant'});
+}
+document.addEventListener('click',event=>{
+  if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+  const link=event.target.closest('a[href]');
+  if(!link||link.hasAttribute('download')||(link.target&&link.target!=='_self'))return;
+  const url=new URL(link.href,location.origin);
+  if(url.origin!==location.origin || !(url.pathname==='/'||/^\/products\/[^/]+\/?$/.test(url.pathname)) || url.search)return;
+  event.preventDefault();
+  navigateStore(url.href);
+});
 window.addEventListener('popstate',renderRoute);
-window.MADIKAR_STORE={cartEntries,closeCart,consumeCart(lines){for(const line of lines||[]){const key=line.id+":"+line.variant;const remaining=(state.cart[key]||0)-line.quantity;if(remaining>0)state.cart[key]=remaining;else delete state.cart[key]}saveCart();renderCart()},clearCart(){state.cart={};saveCart();renderCart()},money};
+window.addEventListener('storage',event=>{if(event.key==='madikar-catalog-changed')void loadCatalog(true)});
+window.addEventListener('focus',()=>{if(Date.now()-catalogVerifiedAt>30000)void loadCatalog(true)});
+window.MADIKAR_STORE={cartEntries,closeCart,navigate:navigateStore,consumeCart(lines){for(const line of lines||[]){const key=line.id+":"+line.variant;const remaining=(state.cart[key]||0)-line.quantity;if(remaining>0)state.cart[key]=remaining;else delete state.cart[key]}saveCart();renderCart()},clearCart(){state.cart={};saveCart();renderCart()},money};
 renderCategories();renderProducts();renderCart();renderRoute();
 async function requestCatalog(){
   // Only retry the read-only catalog request; never replay checkout operations.
@@ -145,11 +165,10 @@ async function requestCatalog(){
     }
   }
 }
-async function loadCatalog(){
+async function loadCatalog(background=false){
   if (catalogLoading) return;
   catalogLoading = true;
-  catalogState = 'loading';
-  renderProducts();
+  if(!background || catalogState!=='ready'){catalogState = 'loading';renderProducts();}
   try {
     const data = await requestCatalog();
     if (!Array.isArray(data.products) || !data.products.length) throw new Error('Catalog unavailable');
@@ -157,6 +176,7 @@ async function loadCatalog(){
     if (next.some(p => !/^p[0-9]+$/.test(p.id) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p.slug) || !Array.isArray(p.variants) || !p.variants.length)) throw new Error('Invalid catalog');
     products.splice(0,products.length,...next);
     catalogState = 'ready';
+    catalogVerifiedAt=Date.now();
     if (!categories().includes(state.category)) state.category = 'All products';
   } catch {
     catalogState = 'error';

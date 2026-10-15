@@ -1,0 +1,50 @@
+-- All availability/queue fixtures roll back. No external HTTP calls occur here.
+begin;
+do $test$
+declare v public."ProductVariant"%rowtype; original jsonb; q jsonb; claimed jsonb; token uuid; rev bigint; other_count bigint;
+begin
+  select pv.* into v from public."ProductVariant" pv join public."Product" p on p.id=pv.product_id
+    where p.store_id is not null and p.catalog_id ~ '^[0-9]+$' and pv.retailer_id is not null order by pv.id limit 1;
+  if not found then raise exception 'No mapped fixture pack'; end if;
+  original:=to_jsonb(v);
+  select count(*) into other_count from public.store_catalog_availability;
+  if other_count<>0 then raise exception 'Run fixtures only with an empty queue'; end if;
+  update public."ProductVariant" set availability_status='unavailable' where id=v.id;
+  select to_jsonb(x) into q from public.store_catalog_availability x where variant_id=v.id;
+  if q->>'retailer_id'<>v.retailer_id or q->>'desired_availability'<>'out of stock' or q->>'status'<>'pending' then raise exception 'Wrong stock mapping'; end if;
+  if (select to_jsonb(x)-'availability_status' from public."ProductVariant" x where id=v.id)<>original-'availability_status' then raise exception 'Unrelated variant data changed'; end if;
+  claimed:=public.store_claim_catalog_availability(v.product_id);
+  if jsonb_array_length(claimed)<>1 then raise exception 'Expected one claim'; end if;
+  token:=(claimed->0->>'lease_token')::uuid; rev:=(claimed->0->>'revision')::bigint;
+  if jsonb_array_length(public.store_claim_catalog_availability(v.product_id))<>0 then raise exception 'Double claim'; end if;
+  if public.store_retry_catalog_availability(v.id) then raise exception 'Manual retry stole active lease'; end if;
+  update public."ProductVariant" set availability_status='available' where id=v.id;
+  if not public.store_finish_catalog_availability(v.id,rev,token,true,'123') then raise exception 'Missing original lease'; end if;
+  select to_jsonb(x) into q from public.store_catalog_availability x where variant_id=v.id;
+  if q->>'status'<>'pending' or q->>'desired_availability'<>'in stock' or (q->>'revision')::bigint<=rev then raise exception 'Newer edit lost'; end if;
+  if public.store_finish_catalog_availability(v.id,rev,token,true,'123') then raise exception 'Stale finish accepted'; end if;
+  claimed:=public.store_claim_catalog_availability(v.product_id);token:=(claimed->0->>'lease_token')::uuid;rev:=(claimed->0->>'revision')::bigint;
+  perform public.store_finish_catalog_availability(v.id,rev,token,false,null,'Permission missing',false);
+  if (select status from public.store_catalog_availability where variant_id=v.id)<>'error' then raise exception 'Permanent failure retried'; end if;
+  if not public.store_retry_catalog_availability(v.id) then raise exception 'Manual retry failed'; end if;
+  claimed:=public.store_claim_catalog_availability(v.product_id);token:=(claimed->0->>'lease_token')::uuid;rev:=(claimed->0->>'revision')::bigint;
+  perform public.store_finish_catalog_availability(v.id,rev,token,true,'123');
+  if not exists(select 1 from public.store_catalog_availability where variant_id=v.id and status='synced' and synced_revision=revision and confirmed_availability='in stock') then raise exception 'Verified result missing'; end if;
+  update public."ProductVariant" set availability_status='unavailable' where id=v.id;
+  claimed:=public.store_claim_catalog_availability(v.product_id);token:=(claimed->0->>'lease_token')::uuid;rev:=(claimed->0->>'revision')::bigint;
+  perform public.store_finish_catalog_availability(v.id,rev,token,false,null,'Temporary',true);
+  if not exists(select 1 from public.store_catalog_availability where variant_id=v.id and status='pending' and next_attempt_at>now()) then raise exception 'Retry delay missing'; end if;
+  update public.store_catalog_availability set status='sending',attempts=8,lease_until=now()-interval '1 minute' where variant_id=v.id;
+  perform public.store_claim_catalog_availability(v.product_id);
+  if (select status from public.store_catalog_availability where variant_id=v.id)<>'error' then raise exception 'Expired final attempt stuck'; end if;
+  perform public.store_set_product_availability(v.product_id,false);
+  if exists(select 1 from public."ProductVariant" where product_id=v.product_id and availability_status<>'unavailable') then raise exception 'Bulk update incomplete'; end if;
+  if exists(select 1 from public.store_catalog_availability q join public."ProductVariant" pv on pv.id=q.variant_id where pv.product_id<>v.product_id) then raise exception 'Wrong parent changed'; end if;
+  update public."ProductVariant" set retailer_id=null where id=v.id;
+  if exists(select 1 from public.store_catalog_availability where variant_id=v.id) then raise exception 'Unmapped pack queued'; end if;
+  if has_table_privilege('anon','public.store_catalog_availability','SELECT') or has_table_privilege('authenticated','public.store_catalog_availability','UPDATE') then raise exception 'Queue exposed'; end if;
+  if has_function_privilege('anon','public.store_set_product_availability(bigint,boolean)','EXECUTE') or has_function_privilege('authenticated','public.store_claim_catalog_availability(bigint)','EXECUTE') then raise exception 'Stock RPC exposed'; end if;
+end;
+$test$;
+rollback;
+select 'stock queue assertions passed; all fixtures rolled back' as result;

@@ -1,6 +1,6 @@
 # ₹1 test-price checklist
 
-Snapshot: 14 October 2026 at 11:57:21 pm IST. These prices were deliberately set for testing and have not been changed. Recheck both systems before going live.
+Snapshot: 15 October 2026 at 3:21:29 pm IST. These prices were deliberately set for testing and have not been changed. Recheck both systems before going live.
 
 | Product | Pack | Meta retailer ID | Meta price | Website price | Intended live price | Meta restored | Website restored |
 |---|---|---|---:|---:|---|---|---|

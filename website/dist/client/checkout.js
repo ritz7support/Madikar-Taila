@@ -1,7 +1,7 @@
 const checkout=window.MADIKAR_STORE;
 const checkoutForm=document.querySelector('#shipping-form'),checkoutStatus=document.querySelector('#checkout-status'),payButton=document.querySelector('#razorpay-pay');
 const sessionKey='madikar-checkout-session';
-let paymentConfig={ready:false,shippingPaise:null},lastCheckoutFocus=null,busy=false,confirmed=false;
+let paymentConfig={ready:false,shippingPaise:null},lastCheckoutFocus=null,busy=false,confirmed=false,lastPaidSessionId=null;
 const inr=checkout.money;
 const cartLines=()=>checkout.cartEntries().map(({key,qty})=>{const[id,variant]=key.split(':');return{id,variant:Number(variant),quantity:qty}});
 const setStatus=(message,tone='note')=>{checkoutStatus.textContent=message;checkoutStatus.dataset.tone=tone;checkoutStatus.hidden=!message};
@@ -15,7 +15,7 @@ function renderCheckoutSummary(){
   document.querySelector('#checkout-items-total').textContent=inr(subtotal/100);
   document.querySelector('#checkout-shipping').textContent=paymentConfig.ready?inr(paymentConfig.shippingPaise/100):'Confirmed by seller';
   document.querySelector('#checkout-grand-total').textContent=paymentConfig.ready?inr((subtotal+paymentConfig.shippingPaise)/100):'Pending';
-  payButton.disabled=busy||!paymentConfig.ready||subtotal===0;
+  payButton.disabled=busy||!paymentConfig.ready||subtotal===0||checkout.cartEntries().some(e=>e.v.orderable===false);
 }
 async function loadPaymentConfig(){
   try{
@@ -30,12 +30,18 @@ function showModal(){
   document.querySelector('#checkout-modal').classList.add('open');document.querySelector('#checkout-modal').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
 }
 function openCheckout(){
-  if(!checkout.cartEntries().length)return;
-  document.querySelector('#checkout-modal').classList.remove('payment-confirmed');document.querySelector('#checkout-modal').setAttribute('aria-labelledby','checkout-title');
-  showModal();checkoutForm.hidden=false;document.querySelector('#checkout-success').hidden=true;setStatus('');renderCheckoutSummary();loadPaymentConfig();checkoutForm.elements.name.focus();
+  const pending=readSession();if(pending?.confirming){confirmingView();void waitForConfirmation(pending);return}
+  if(!checkout.cartEntries().length||checkout.cartEntries().some(e=>e.v.orderable===false))return;
+  document.querySelector('#checkout-modal').classList.remove('payment-confirmed','payment-confirming');document.querySelector('#checkout-modal').setAttribute('aria-labelledby','checkout-title');
+  showModal();checkoutForm.hidden=false;document.querySelector('#checkout-success').hidden=true;document.querySelector('#checkout-confirming').hidden=true;setStatus('');renderCheckoutSummary();loadPaymentConfig();checkoutForm.elements.name.focus();
 }
 function closeCheckout(){
-  if(confirmed){sessionStorage.removeItem(sessionKey);window.location.assign('/');return}
+  if(confirmed){
+    sessionStorage.removeItem(sessionKey);confirmed=false;
+    document.querySelector('#checkout-overlay').hidden=true;document.querySelector('#checkout-modal').classList.remove('open');
+    document.querySelector('#checkout-modal').setAttribute('aria-hidden','true');document.body.style.overflow='';
+    if(checkout.navigate)checkout.navigate('/',{replace:true});else window.location.assign('/');return;
+  }
   document.querySelector('#checkout-overlay').hidden=true;document.querySelector('#checkout-modal').classList.remove('open');
   document.querySelector('#checkout-modal').setAttribute('aria-hidden','true');document.body.style.overflow='';if(lastCheckoutFocus?.isConnected)lastCheckoutFocus.focus();
 }
@@ -63,8 +69,15 @@ async function prepareSession(lines,address){
 }
 function showPaid(result,session){
   if(result.status!=='paid')return false;
+  // Verification and a reopened status view may finish together. Display and
+  // consume each session once, even if those requests hold separate copies.
+  if(lastPaidSessionId===session.sessionId)return true;
+  const saved=readSession();
+  if(saved?.sessionId===session.sessionId&&saved.cartConsumed)session.cartConsumed=true;
+  document.querySelector('#checkout-modal').classList.remove('payment-confirming');
+  document.querySelector('#checkout-confirming').hidden=true;
   if(!session.cartConsumed){checkout.consumeCart(session.lines);session.cartConsumed=true;saveSession(session)}
-  confirmed=true;busy=false;showModal();checkoutForm.hidden=true;document.querySelector('#payment-reference').textContent=result.reference+' · '+result.paymentId;
+  lastPaidSessionId=session.sessionId;confirmed=true;busy=false;showModal();checkoutForm.hidden=true;document.querySelector('#payment-reference').textContent=result.reference+' · '+result.paymentId;
   document.querySelector('#checkout-modal').classList.add('payment-confirmed');document.querySelector('#checkout-modal').setAttribute('aria-labelledby','checkout-success-title');
   document.querySelector('#checkout-success h3').textContent=result.mode==='test'?'Test payment received':'Payment received';
   document.querySelector('#checkout-success p').textContent=result.mode==='test'?'This was a test payment. Your test order has been recorded.':'Thank you! Your payment is confirmed and your order has been recorded. Please save the reference below.';
@@ -73,6 +86,26 @@ function showPaid(result,session){
   history.replaceState(null,'','/?payment=true');document.querySelector('#checkout-done').focus();return true;
 }
 async function checkPayment(session){return showPaid(await jsonPost('/api/checkout/status',identity(session)),session)}
+let confirmationCheck=null;
+function confirmingView(message='Please wait while we verify your payment and record your order.'){
+  busy=true;showModal();checkoutForm.hidden=true;setStatus('');
+  document.querySelector('#checkout-modal').classList.add('payment-confirming');document.querySelector('#checkout-modal').setAttribute('aria-labelledby','confirmation-title');
+  document.querySelector('#checkout-success').hidden=true;
+  document.querySelector('#checkout-confirming').hidden=false;
+  document.querySelector('#confirmation-progress').textContent=message;
+}
+async function waitForConfirmation(session){
+  if(confirmationCheck)return confirmationCheck;
+  confirmationCheck=(async()=>{
+    for(const delay of [1000,1500,2500,4000,6000]){
+      await new Promise(resolve=>setTimeout(resolve,delay));
+      try{if(await checkPayment(session))return true}catch{}
+    }
+    document.querySelector('#confirmation-progress').textContent='Your payment is still being checked. Please refresh shortly before trying another payment, or contact +91 99722 67897 with your payment reference.';
+    return false;
+  })();
+  try{return await confirmationCheck}finally{confirmationCheck=null}
+}
 checkoutForm.addEventListener('submit',async event=>{
   event.preventDefault();if(busy||!checkoutForm.reportValidity())return;
   if(!paymentConfig.ready)return setStatus('Online payment has not been enabled yet.','error');
@@ -94,12 +127,12 @@ checkoutForm.addEventListener('submit',async event=>{
         busy=false;renderCheckoutSummary();setStatus('Payment window closed. You can reopen this checkout when ready.');
       }},
       handler:async payment=>{
-        session.confirming=true;saveSession(session);setStatus('Confirming your payment…');
+        session.confirming=true;saveSession(session);confirmingView();
         try{
           const result=await jsonPost('/api/checkout/verify',{...identity(session),orderId:order.orderId,paymentId:payment.razorpay_payment_id,signature:payment.razorpay_signature});
           if(showPaid(result,session))return;
-          setStatus('Your payment is being confirmed. Please refresh to check its status before paying again.','error');
-        }catch{setStatus('Payment confirmation is pending. Please refresh to check its status. Payment reference: '+payment.razorpay_payment_id,'error')}
+        }catch{/* Status reconciliation uses the saved session, never a new payment. */}
+        await waitForConfirmation(session);
       }
     });
     razorpay.on('payment.failed',response=>setStatus(response.error?.description||'Payment was not completed. You can retry in the payment window.','error'));
@@ -111,8 +144,8 @@ async function restorePayment(){
   if(!session){if(returning)history.replaceState(null,'','/');return}
   try{
     if(await checkPayment(session))return;
-    if(session.confirming){showModal();busy=true;renderCheckoutSummary();setStatus('Payment confirmation is pending. Please refresh again shortly, or contact +91 99722 67897 with your payment reference.','error')}
-  }catch{if(session.confirming){showModal();busy=true;renderCheckoutSummary();setStatus('Payment confirmation could not be checked. Please refresh before trying another payment.','error')}}
+    if(session.confirming){confirmingView();renderCheckoutSummary();void waitForConfirmation(session)}
+  }catch{if(session.confirming){confirmingView();renderCheckoutSummary();void waitForConfirmation(session)}}
   if(returning)history.replaceState(null,'','/');
 }
 document.querySelector('#checkout-open').addEventListener('click',openCheckout);

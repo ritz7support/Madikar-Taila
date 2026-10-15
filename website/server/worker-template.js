@@ -1,6 +1,35 @@
 // Generated into dist/server/index.js by scripts/build-worker.mjs.
 // Razorpay credentials stay in Supabase. Sites signs requests to the website service.
 const encoder = new TextEncoder();
+const STATIC_VERSION = '__STATIC_VERSION__';
+
+async function staticAsset(request,env,ctx,path=null){
+  if(!env.ASSETS)return new Response('Not found',{status:404});
+  const assetUrl=new URL(request.url);if(path)assetUrl.pathname=path;
+  const assetRequest=new Request(assetUrl,request);
+  // Sites runs in an isolated Workers namespace where caches.default is forbidden.
+  // Cache availability is an optimization; failures must never break a public page.
+  let cache;
+  try{cache=await globalThis.caches?.open('madikar-static-'+STATIC_VERSION)}catch{}
+  if(request.method!=='GET'||!cache)return env.ASSETS.fetch(assetRequest);
+  // Only public static files enter this cache. Every deployment has a content hash;
+  // catalog, stock, admin operations and payment responses always bypass it.
+  const keyUrl=new URL(request.url);keyUrl.pathname='/__madikar_static/'+STATIC_VERSION+assetUrl.pathname;keyUrl.search='';
+  const key=new Request(keyUrl,{method:'GET'});
+  let response;
+  try{response=await cache.match(key)}catch{return env.ASSETS.fetch(assetRequest)}
+  if(!response){
+    response=await env.ASSETS.fetch(assetRequest);
+    if(response.status===200&&!response.headers.has('set-cookie')&&!/private|no-store/i.test(response.headers.get('cache-control')||'')){
+      const stored=new Response(response.clone().body,response);stored.headers.set('Cache-Control','public, max-age=300');
+      const save=cache.put(key,stored).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(save);else await save;
+    }
+  }
+  const headers=new Headers(response.headers);
+  if(!headers.has('set-cookie')&&!/private|no-store/i.test(headers.get('cache-control')||''))headers.set('Cache-Control','public, max-age=0, must-revalidate');
+  if(response.status===200&&headers.get('etag')&&request.headers.get('if-none-match')===headers.get('etag'))return new Response(null,{status:304,headers});
+  return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+}
 
 function json(value,status=200){
   return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
@@ -46,7 +75,7 @@ async function clientHash(request,env){
 }
 
 export default {
-  async fetch(request,env){
+  async fetch(request,env,ctx){
     const url = new URL(request.url);
     if (url.pathname === '/api/admin/config' && request.method === 'GET') {
       return json({url:env.SUPABASE_URL || '',ready:Boolean(env.SUPABASE_URL && env.STORE_SIGNING_PRIVATE_JWK)});
@@ -71,9 +100,9 @@ export default {
       catch { return json({error:'The product catalog is temporarily unavailable.'},503); }
     }
     if (request.method === 'GET' && /^\/products\/[^/]+\/?$/.test(url.pathname)) {
-      return env.ASSETS ? env.ASSETS.fetch(new Request(new URL('/',url),request)) : new Response('Not found',{status:404});
+      return staticAsset(request,env,ctx,'/');
     }
-    if (!url.pathname.startsWith('/api/checkout/')) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found',{status:404});
+    if (!url.pathname.startsWith('/api/checkout/')) return staticAsset(request,env,ctx);
     if (request.method === 'GET' && url.pathname === '/api/checkout/config') {
       try { return json(await storeApi(env,{action:'checkout_config'})); }
       catch { return json({ready:false,shippingPaise:null}); }

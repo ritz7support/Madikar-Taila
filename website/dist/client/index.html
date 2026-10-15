@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#123321">
   <meta name="description" content="Explore Madikar Taila's wood-pressed oils, millets, chutneys and natural pantry essentials from Dharwad.">
+  <link rel="preconnect" href="https://faoomjgkofqrdajaftjd.supabase.co">
+  <script>if(/^\/products\//.test(location.pathname))document.documentElement.classList.add('product-route');</script>
   <title>Madikar Taila — Pure by Nature</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23123321'/%3E%3Cpath d='M32 6C21 20 12 30 12 41a20 20 0 0 0 40 0C52 30 43 20 32 6Z' fill='%23f5f1e7'/%3E%3Cpath d='M32 24c-6 8-10 13-10 19a10 10 0 0 0 20 0c0-6-4-11-10-19Z' fill='%23d5a53f'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css">
@@ -58,6 +60,7 @@
       <p id="checkout-status" class="checkout-status" role="status" hidden></p>
       <button id="razorpay-pay" class="checkout-pay" type="submit" disabled>Pay securely with Razorpay</button>
     </form>
+    <div id="checkout-confirming" class="checkout-confirming" role="status" aria-live="polite" hidden><div class="confirmation-spinner" aria-hidden="true"></div><h3 id="confirmation-title">Confirming your payment</h3><p id="confirmation-progress">Please wait while we verify your payment and record your order.</p></div>
     <div id="checkout-success" class="checkout-success" hidden><div class="success-mark">✓</div><h3 id="checkout-success-title">Payment received</h3><p>Your order and delivery address have been submitted. Please save the payment reference below.</p><strong id="payment-reference"></strong><button id="checkout-done" class="outline-button" type="button">Continue shopping</button></div>
   </section>
 </body>

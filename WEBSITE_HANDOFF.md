@@ -1,4 +1,12 @@
-# Madikar Taila website handoff — 14 October 2026
+# Madikar Taila website handoff — 15 October 2026
+
+## Latest publication
+
+Continue from codex/store-speed-stock-sync (base b3d894a), preserving all earlier admin/shipment/variant work. Site 34 is published on the same public project at https://madikartaila.com, from Sites commit 3346982dbe2d15662f9cd3d25ec8be81a67dc1f4; deployment appgdep_6ad0a7c4f9208191838f6cc33084dc8b. The website backend is madikar-store v17 with index, checkout, confirmation, shipment and availability modules; all five match local. Other bot functions are unchanged. Do not deploy Site 32: its default-cache assumption was corrected in Site 33 with named-cache/fallback coverage.
+
+Read PROJECT_HANDOFF.md and docs/plans/STORE_SPEED_AND_STOCK_2026-10-15.md first. Home/product routing now reuses the catalog, All products returns without reloading, and Copy product link replaces the WhatsApp field. Payment progress and session polling improve feedback; parallel provider reads retain all payment checks. Stock is an availability choice per pack or across a product, with exact-pack Meta availability sync, status and retries. No numeric stock entry, historical data change, actual Meta toggle, payment or customer message was used in implementation tests. All 76 automated tests, SQL rollback assertions and desktop/mobile browser checks pass.
+
+Current catalog: 75 Product rows (59 website parents, 16 lookups), 94 variants and 94 Meta items; all mapped, all prices matching, four intentional ₹1 packs. Every existing variant remains available with untracked stock. CSV image links alone now use Supabase. Full sync, non-default-pack live payment testing and courier calculations remain deferred. The following checkpoints are historical where superseded above.
 
 Start with PROJECT_HANDOFF.md, docs/plans/VARIANT_RETAILER_IDS.md and its Phase 2 report. Canonical source is website/ in samskruthrml21-eng/Madikar-Taila. Latest branch: codex/catalog-export-variant-compatibility, based on be60d37 and preserving ae53bb4. Last fetched origin/main was older at 4769c08. Preserve the admin/shipment baseline. The version-15 handoff in docs/history/ is history.
 

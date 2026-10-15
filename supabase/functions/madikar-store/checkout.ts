@@ -133,10 +133,10 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
     const [order]=await db('/rest/v1/orders?select=reference_id&id=eq.'+s.order_id+'&source=eq.store&limit=1');
     return {status:'paid',reference:order.reference_id,paymentId:s.provider_payment_id,amountPaise:s.total_paise,mode:s.mode};
   }
-  async function capture(s,payment){
+  async function capture(s,payment,verifiedOrder=null){
     if(payment.order_id!==s.provider_order_id||payment.amount!==s.total_paise||payment.currency!=='INR')fail('Payment does not match this checkout.');
     if(payment.status!=='captured')return {status:'pending'};
-    const order=await razorpay(s.mode,'/orders/'+s.provider_order_id);
+    const order=verifiedOrder || await razorpay(s.mode,'/orders/'+s.provider_order_id);
     if(order.amount!==s.total_paise||order.currency!=='INR'||order.status!=='paid')return {status:'pending'};
     const saved=await rpc('store_finalize_checkout',{p_session_id:s.id,p_provider_order_id:s.provider_order_id,p_payment_id:payment.id,p_amount_paise:payment.amount,p_currency:'INR',p_method:payment.method||null,p_paid_at:new Date((payment.created_at||Math.floor(Date.now()/1000))*1000).toISOString()});
     background(work(s.id));
@@ -150,7 +150,13 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
       if(s.provider_payment_id!==body.paymentId)fail('Payment does not match this checkout.');
       return paidResult(s);
     }
-    return capture(s,await razorpay(s.mode,'/payments/'+body.paymentId));
+    // Independent provider reads run together; success still requires both validations
+    // and the same transactional order finalization as before.
+    const [payment,order]=await Promise.all([
+      razorpay(s.mode,'/payments/'+body.paymentId),
+      razorpay(s.mode,'/orders/'+s.provider_order_id)
+    ]);
+    return capture(s,payment,order);
   }
   async function reconcile(s){
     if(!s.provider_order_id)return {status:'pending'};

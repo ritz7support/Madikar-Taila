@@ -52,3 +52,4 @@
 .product-share-row button:hover{background:var(--green)}
 #product-share-status{min-height:18px;margin:6px 0 0;color:#5b705e;font-size:11px}
 @media(max-width:480px){.product-share-row{flex-direction:column}.product-share-row button{width:100%}}
+#copy-product-link{border:1px solid var(--forest);background:var(--forest);color:#fff;padding:12px 18px;font-weight:700}#copy-product-link:hover{background:var(--green)}

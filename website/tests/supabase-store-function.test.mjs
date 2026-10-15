@@ -23,6 +23,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   const shipmentWork=[],shipmentRetries=[];
   const notifications=new Map();
   const sandbox = {
+    createCatalogAvailabilityService:()=>({work:async()=>({checked:0})}),
     createCheckoutService:()=>({authorizeRecovery:async token=>token==='recovery-token'}),
     createShipmentNotificationService:()=>({work:async id=>{shipmentWork.push(id);return {checked:0}},
       view:async id=>notifications.get(Number(id)) || null,retry:async id=>{shipmentRetries.push(id)}}),
@@ -34,6 +35,12 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
       databaseCalls.push({url:String(url),options});
       assert.equal(options.headers.apikey,'sb_secret_test');
       assert.equal(options.headers.Authorization,undefined);
+      if (String(url).includes('/store_catalog_availability?')) return Response.json([]);
+      if (String(url).endsWith('/rpc/store_set_product_availability')) {
+        const b=JSON.parse(options.body);assert.deepEqual(Object.keys(b).sort(),['p_available','p_product_id']);assert.equal(b.p_product_id,1);
+        variant.availability_status=b.p_available?'available':'unavailable';return Response.json({updated:1});
+      }
+      if (String(url).endsWith('/rpc/store_retry_catalog_availability')) return Response.json(true);
       if (String(url).includes('/Product?') && options.method === 'PATCH') {
         const updated=JSON.parse(options.body);
         assert.deepEqual(Object.keys(updated).sort(),['category','images','short_description','store_active','store_name']);
@@ -109,7 +116,7 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   assert.deepEqual((await weighted.json()).variant,{...before,shipping_weight_grams:550});
   const adminCatalog=await send({action:'admin_catalog',adminToken});
   assert.equal((await adminCatalog.json()).products[0].variants[0].shipping_weight_grams,550);
-  assert.ok(databaseCalls.some(c=>c.url.includes('select=id,product_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams')));
+  assert.ok(databaseCalls.some(c=>c.url.includes('select=id,product_id,retailer_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams')));
   rejectCatalogReads=1;
   const retried=await send({action:'admin_catalog',adminToken});
   assert.equal(retried.status,200,'transient PGRST303 read should recover');
@@ -203,4 +210,19 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   const calls=databaseCalls.length;
   assert.equal((await send({...pack,adminToken:'invalid',shippingWeightGrams:600})).status,403);
   assert.equal(databaseCalls.length,calls);
+  for(const action of ['admin_product_availability','admin_retry_stock_sync','admin_stock_sync_status']){
+    const count=databaseCalls.length;assert.equal((await send({action,adminToken:'invalid',productId:1,variantId:10,available:false})).status,403);assert.equal(databaseCalls.length,count);
+  }
+  assert.equal((await handler(new Request(endpoint+'/catalog-availability-recovery',{method:'POST'}))).status,401);
+  assert.equal((await handler(new Request(endpoint+'/catalog-availability-recovery',{method:'POST',headers:{'x-checkout-recovery':'recovery-token'}}))).status,200);
+  const beforeStock={...variant};
+  assert.equal((await send({action:'admin_product_availability',adminToken,productId:1,available:'false'})).status,400);
+  assert.equal((await send({action:'admin_product_availability',adminToken,productId:1,available:false})).status,200);
+  assert.deepEqual(variant,{...beforeStock,availability_status:'unavailable'});
+  assert.equal((await (await send({action:'catalog'})).json()).products[0].variants[0].orderable,false);
+  assert.equal((await send({action:'admin_retry_stock_sync',adminToken,variantId:10})).status,200);
+  assert.deepEqual(await (await send({action:'admin_stock_sync_status',adminToken,productId:1})).json(),{sync:[]});
+  const {inventoryQuantity:ignoredInventory,...noInventory}=pack;
+  assert.equal((await send({...noInventory,availabilityStatus:'available'})).status,200);
+  assert.equal(variant.inventory_quantity,5,'stock controls must preserve existing quantities when omitted');
 });
