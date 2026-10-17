@@ -20,9 +20,10 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     status:index===0?'pending_payment':'processing',fulfillment_status:'processing',created_at:'2026-10-07T00:00:00Z',
     total:175,subtotal:175,shipping:0,profile_id:null,address_id:null}));
   const databaseCalls = [];
-  const shipmentWork=[],shipmentRetries=[];
+  const shipmentWork=[],shipmentRetries=[],deliveryWork=[];
   const notifications=new Map();
   const sandbox = {
+    createDeliveryNotificationService:()=>({work:async id=>{deliveryWork.push(id);return {checked:0}},view:async()=>null,retry:async()=>{}}),
     createCatalogAvailabilityService:()=>({work:async()=>({checked:0})}),
     createCheckoutService:()=>({authorizeRecovery:async token=>token==='recovery-token'}),
     createShipmentNotificationService:()=>({work:async id=>{shipmentWork.push(id);return {checked:0}},
@@ -59,6 +60,14 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
         const {p_page,p_source}=JSON.parse(options.body);
         const found=orders.filter(o=>p_source==='all'||o.source===p_source).toSorted((a,b)=>b.id-a.id);
         return Response.json({orders:found.slice(p_page*20,(p_page+1)*20),hasMore:found.length>(p_page+1)*20,page:p_page});
+      }
+      if (String(url).endsWith('/rpc/store_update_fulfillment')) {
+        const b=JSON.parse(options.body),order=orders.find(o=>String(o.id)===String(b.p_order_id));
+        if(!order||order.status==='pending_payment'||order.fulfillment_status!==b.p_previous)return Response.json({message:'Order changed'},{status:409});
+        order.fulfillment_status=b.p_stage;
+        if(b.p_stage==='shipped'){order.tracking_id=b.p_tracking_id;if(b.p_set_delivery_days)order.estimated_delivery_days=b.p_delivery_days;}
+        if(order.fulfillment_status==='shipped'&&order.estimated_delivery_days)notifications.set(order.id,{status:'pending',attempts:0});
+        return Response.json({id:order.id,fulfillmentStatus:order.fulfillment_status,trackingId:order.tracking_id,estimatedDeliveryDays:order.estimated_delivery_days??null,shipmentNotification:notifications.get(order.id)||null,deliveryNotification:null});
       }
       if (String(url).includes('/rest/v1/orders?')) {
         const query=new URL(url).searchParams;
@@ -149,8 +158,10 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
     assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId:'TRACK-123',estimatedDeliveryDays})).status,400);
     assert.equal(databaseCalls.length,count,'invalid delivery estimates must not write');
   }
+  const saveCalls=databaseCalls.length;
   const changed=await send({action:'admin_update_fulfillment',adminToken,id:2,status:'shipped',previousStatus:'processing',trackingId:' TRACK-123 ',estimatedDeliveryDays:'5'});
   assert.equal(changed.status,200);
+  assert.equal(databaseCalls.length-saveCalls,1,'durable fulfillment save and notification state use one DB request');
   assert.equal((await changed.json()).fulfillmentStatus,'shipped');
   assert.equal(orders[1].status,'processing','payment and bot status must remain unchanged');
   assert.equal(orders[1].tracking_id,'TRACK-123');
@@ -172,6 +183,9 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'completed',previousStatus:'processing'})).status,409);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'unknown',previousStatus:'shipped'})).status,400);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken:'invalid',id:2,status:'completed',previousStatus:'shipped'})).status,403);
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'completed',previousStatus:'shipped'})).status,200);
+  assert.deepEqual(deliveryWork,[2]);
+  assert.equal((await handler(new Request(endpoint+'/delivery-recovery',{method:'POST'}))).status,401);
   const legacy=await send(pack);
   assert.equal((await legacy.json()).variant.shipping_weight_grams,550,'old admin clients must preserve saved weights');
   const publicCatalog=await send({action:'catalog'});

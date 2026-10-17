@@ -4,6 +4,6 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-worker.mjs",
-    "test": "node --test tests/*.test.mjs ../supabase/functions/madikar-store/*.test.mjs"
+    "test": "node --test tests/*.test.mjs ../supabase/functions/madikar-store/*.test.mjs ../supabase/functions/_shared/shipping.test.mjs"
   }
 }

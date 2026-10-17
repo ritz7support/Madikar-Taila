@@ -4,10 +4,11 @@ import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import {webcrypto} from 'node:crypto';
 import vm from 'node:vm';
+import {calculateShipping} from '../../supabase/functions/_shared/shipping.ts';
 
 const source=stripTypeScriptTypes(readFileSync(new URL('../../supabase/functions/whatsapp-webhook/index.ts',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,''));
 const parent={id:5,name:'Groundnut oil',description:'Local description',product_link:'https://example.test/oil',catalog_id:'catalog-A'};
-const packs=[{id:1,product_id:5,retailer_id:'pack-500',size:'500 ml',price:175,parent},{id:2,product_id:5,retailer_id:'pack-1000',size:'1 L',price:345,parent}];
+const packs=[{id:1,product_id:5,retailer_id:'pack-500',size:'500 ml',price:175,shipping_weight_grams:500,parent},{id:2,product_id:5,retailer_id:'pack-1000',size:'1 L',price:345,shipping_weight_grams:1000,parent}];
 const legacy=[{retailer_id:'legacy-only',name:'Legacy item',catalog_id:'catalog-A'}];
 function fixture({variants=packs,products=legacy,duplicate=false,lookupStatus=200}={}){
   const state={calls:[],orders:[],items:[],messages:[],payments:[],paymentLinks:[],rpc:null};
@@ -26,7 +27,7 @@ function fixture({variants=packs,products=legacy,duplicate=false,lookupStatus=20
       if(table==='Product')return Response.json(products.filter(p=>p.retailer_id===filter(u,'retailer_id')&&p.catalog_id===filter(u,'catalog_id')));
       if(table==='Profile')return Response.json([{id:'profile-fixture',name:'Test Buyer'}]);
       if(table==='orders')return Response.json(state.orders);
-      if(table==='create_order_with_items'){
+      if(table==='create_order_with_shipping'){
         state.rpc=body;state.items=body.p_items;
         const order={id:1,reference_id:body.p_reference_id,catalog_id:body.p_catalog_id,currency:body.p_currency,total:body.p_total,subtotal:body.p_subtotal,shipping:body.p_shipping,discount:body.p_discount};
         state.orders.push(order);return Response.json({order,duplicate:false});
@@ -43,7 +44,7 @@ function fixture({variants=packs,products=legacy,duplicate=false,lookupStatus=20
     }
     throw Error('Unexpected external call '+url);
   };
-  const sandbox={Deno:{env:{get:k=>env[k]},serve:()=>{}},crypto:webcrypto,performance,TextEncoder,TextDecoder,Response,Request,URL,AbortSignal,Date,setTimeout,btoa,atob,console:{log:()=>{},error:()=>{}},fetch};
+  const sandbox={calculateShipping,Deno:{env:{get:k=>env[k]},serve:()=>{}},crypto:webcrypto,performance,TextEncoder,TextDecoder,Response,Request,URL,AbortSignal,Date,setTimeout,btoa,atob,console:{log:()=>{},error:()=>{}},fetch};
   vm.runInNewContext(source+';globalThis.api={lookup:getExistingProductByRetailerId,create:createOrderFromWhatsAppCart,payment:createRazorpayPaymentLink,details:buildOrderDetailsPayload};',sandbox);
   return {api:sandbox.api,state};
 }
@@ -58,24 +59,24 @@ test('variant lookup identifies exact pack within the incoming catalog',async()=
   assert.equal(await f.api.lookup('pack-500','unrelated-catalog'),null);
   assert.equal(f.state.calls.some(c=>c.url.includes('graph.facebook.com')),false);
 });
-test('legacy and incoming metadata fallbacks remain available',async()=>{
-  const f=fixture();
+test('legacy lookup remains readable but unknown pack weights cannot create a payable order',async()=>{
+  const f=fixture();assert.equal((await f.api.lookup('legacy-only','catalog-A')).name,'Legacy item');
   await f.api.create('919000000001',cart([item('legacy-only',7.5),item('unmapped',2,1,{name:'Incoming item'})]));
-  assert.deepEqual(f.state.items.map(i=>[i.product_retailer_id,i.product_name,i.unit_price]),[['legacy-only','Legacy item',7.5],['unmapped','Incoming item',2]]);
-  assert.equal(f.state.rpc.p_total,9.5);
+  assert.equal(f.state.orders.length,0);assert.equal(f.state.payments.length,0);assert.equal(f.state.messages[0].type,'text');
 });
+
 test('mixed packs preserve incoming prices and exact IDs through order details and payment link',async()=>{
   const f=fixture();
   await f.api.create('919000000001',cart([item('pack-500',1,2),item('pack-1000',345,3)]));
-  assert.equal(f.state.rpc.p_total,1037);assert.equal(f.state.rpc.p_shipping,0);
+  assert.equal(f.state.rpc.p_total,1237);assert.equal(f.state.rpc.p_shipping,200);
   assert.deepEqual(f.state.items.map(i=>[i.product_retailer_id,i.product_name,i.unit_price,i.quantity]),[['pack-500','Groundnut oil (500 ml)',1,2],['pack-1000','Groundnut oil (1 L)',345,3]]);
   assert.equal(f.state.messages[0].template.name,'address');
   const order=f.state.orders[0],payment=await f.api.payment(order,'919000000001');
-  assert.equal(f.state.paymentLinks[0].amount,103700);
+  assert.equal(f.state.paymentLinks[0].amount,123700);
   assert.equal(f.state.paymentLinks[0].currency,'INR');
-  assert.equal(payment.amount,1037);
+  assert.equal(payment.amount,1237);
   const details=f.api.details('919000000001',order,f.state.items,payment).interactive.action.parameters;
-  assert.equal(details.total_amount.value,103700);
+  assert.equal(details.total_amount.value,123700);
   assert.deepEqual(Array.from(details.order.items,i=>[i.retailer_id,i.amount.value,i.quantity]),[['pack-500',100,2],['pack-1000',34500,3]]);
   assert.equal(details.payment_settings[0].payment_link.uri,'https://pay.example.test/mock');
   await f.api.create('919000000001',cart([item('pack-500',1)]));

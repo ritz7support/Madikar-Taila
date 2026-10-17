@@ -1,6 +1,10 @@
 # WhatsApp bot backend — do not change these for website work
 
-Last reviewed: 15 October 2026.
+Last reviewed: 17 October 2026.
+
+## Owner-authorized shipping and website-link compatibility — 17 October
+
+The owner requested shipping charges and the same Payment Links mechanism for website payments, confirmed a 200 g cutoff and multiple boxes, and requested edge-case tests. This narrowly authorizes `whatsapp-webhook` to quote shipping from exact variant weights and `razorpay-webhook` to restrict its payment lookups to WhatsApp orders. New `create_order_with_shipping` wraps the existing transactional order RPC without changing that RPC or its grants. Existing pending orders retain their quoted amounts. `madikar-store` adds separate website-link handling and admin delivery notifications. Do not expand this exception to Flow handlers, `_shared/order-handoff.ts`, catalog sync, credentials, existing customer defaults or historical order/payment edits. See `docs/plans/PAYMENT_LINKS_SHIPPING_DELIVERY_2026-10-17.md`.
 
 ## Explicitly authorized Razorpay order-ID prefix — 15 October 2026
 

@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { calculateShipping } from '../_shared/shipping.ts';
 
 const SUPABASE_URL=Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -326,7 +327,7 @@ function moneyValue(amount:number){
 
 async function getExistingProductByRetailerId(id:string,catalogId:string=CATALOG_ID){
   const filter=(value:string)=>encodeURIComponent(value);
-  const variantResponse=await db(`/rest/v1/ProductVariant?select=id,product_id,retailer_id,size,parent:Product!inner(id,name,description,product_link,catalog_id)&retailer_id=eq.${filter(id)}&parent.catalog_id=eq.${filter(catalogId)}&limit=2`);
+  const variantResponse=await db(`/rest/v1/ProductVariant?select=id,product_id,retailer_id,size,shipping_weight_grams,parent:Product!inner(id,name,description,product_link,catalog_id)&retailer_id=eq.${filter(id)}&parent.catalog_id=eq.${filter(catalogId)}&limit=2`);
   if(!variantResponse.ok)throw new Error(`Variant lookup failed: ${await variantResponse.text()}`);
   const variants=await variantResponse.json();
   if(!Array.isArray(variants)||variants.length>1)throw new Error("Ambiguous variant retailer ID");
@@ -334,7 +335,7 @@ async function getExistingProductByRetailerId(id:string,catalogId:string=CATALOG
     const variant=variants[0],parent=variant.parent;
     if(!parent||parent.id!==variant.product_id||parent.catalog_id!==catalogId||variant.retailer_id!==id)throw new Error("Variant catalog identity mismatch");
     const name=String(parent.name??"").trim(),size=String(variant.size??"").trim();
-    return {...parent,retailer_id:id,name:name&&size?`${name} (${size})`:name||null};
+    return {...parent,variant_id:variant.id,shipping_weight_grams:variant.shipping_weight_grams,retailer_id:id,name:name&&size?`${name} (${size})`:name||null};
   }
   // Retain lookup compatibility for historical and not-yet-mapped Meta items.
   const r=await db(`/rest/v1/Product?select=retailer_id,name,description,product_link,catalog_id&retailer_id=eq.${filter(id)}&catalog_id=eq.${filter(catalogId)}&limit=2`);
@@ -579,11 +580,15 @@ async function createOrderFromWhatsAppCart(waId:string,m:any){
     const unitPrice=incomingPrice;
     const productName=String(cachedProduct?.name??raw?.product_name??raw?.name??"").trim()||null;
     if(!Number.isFinite(unitPrice)||unitPrice<0)throw new Error(`No valid price available for product ${retailerId}`);
-    return {product_retailer_id:retailerId,product_name:productName,quantity,unit_price:unitPrice,currency};
+    return {product_retailer_id:retailerId,product_name:productName,quantity,unit_price:unitPrice,currency,variantId:cachedProduct?.variant_id,weightGrams:cachedProduct?.shipping_weight_grams};
   }));
 
   const subtotal=normalizedItems.reduce((s,i)=>s+i.quantity*i.unit_price,0);
-  const shipping=0,discount=0,total=subtotal;
+  let shippingQuote;
+  try{shippingQuote=calculateShipping(normalizedItems.map(i=>({...i,name:i.product_name})));}
+  catch(error){await send({messaging_product:'whatsapp',to:waId,type:'text',text:{body:'We cannot calculate shipping for this cart yet. Please contact +91 99722 67897 so we can help with your order.'}});return;}
+  shippingQuote.items=normalizedItems.map(i=>({variantId:i.variantId,retailerId:i.product_retailer_id,quantity:i.quantity,weightGrams:i.weightGrams}));
+  const shipping=shippingQuote.shippingPaise/100,discount=0,total=subtotal+shipping;
   const referenceId=`ORD-${Date.now()}-${crypto.randomUUID().slice(0,6).toUpperCase()}`;
 
   // Order + order_items are created atomically via a single Postgres function call
@@ -593,7 +598,7 @@ async function createOrderFromWhatsAppCart(waId:string,m:any){
   // whatsapp_message_id, so a half-created order would make every future retry of the
   // same WhatsApp message a no-op forever). The function also absorbs the
   // whatsapp_message_id duplicate-insert race that used to need a 409 + re-select here.
-  const rpc=await db("/rest/v1/rpc/create_order_with_items",{
+  const rpc=await db("/rest/v1/rpc/create_order_with_shipping",{
     method:"POST",
     body:JSON.stringify({
       p_reference_id:referenceId,
@@ -606,6 +611,7 @@ async function createOrderFromWhatsAppCart(waId:string,m:any){
       p_shipping:shipping,
       p_discount:discount,
       p_total:total,
+      p_shipping_quote:shippingQuote,
       p_items:normalizedItems.map(i=>({
         product_retailer_id:i.product_retailer_id,
         product_name:i.product_name,

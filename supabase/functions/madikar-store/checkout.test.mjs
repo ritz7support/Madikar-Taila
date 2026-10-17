@@ -6,16 +6,16 @@ import {createCheckoutService,validateDelivery} from './checkout.ts';
 const address={name:'Test Buyer',phone:'9000000001',email:'',line1:'1 Test Street',line2:'',city:'Dharwad',state:'Karnataka',postalCode:'580001',country:'India'};
 const body=()=>({sessionId:crypto.randomUUID(),token:'a'.repeat(64),clientHash:'b'.repeat(64),address:{...address},lines:[{id:'p1',variant:0,quantity:2}]});
 const mac=(secret,value)=>createHmac('sha256',secret).update(value).digest('hex');
-function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRetailerId=null,catalogVariants=null}={}){
+function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRetailerId=null,catalogVariants=null,paymentMethod='order',weightShipping=false}={}){
   const state={calls:[],sessions:[],profiles:existing?[{id:crypto.randomUUID(),whatsAppUserId:'91'+address.phone,name:'Original',email:'original@example.test'}]:[],orders:[],payment:{id:'pay_fixture',order_id:'order_fixture',amount:40000,currency:'INR',status:'captured',method:'upi'},finalized:0,remoteOrders:0,handoffs:[],allowed:true,due:[]};
   const env={RAZORPAY_MODE:mode,RAZORPAY_TEST_KEY_ID:'rzp_test_fixture',RAZORPAY_TEST_KEY_SECRET:'test-secret',RAZORPAY_LIVE_KEY_ID:'rzp_live_fixture',RAZORPAY_LIVE_KEY_SECRET:'live-secret',RAZORPAY_TEST_WEBHOOK_SECRET:'test-hook',RAZORPAY_LIVE_WEBHOOK_SECRET:'live-hook',N8N_WEBHOOK_URL:'https://fulfilment.example.test'};
   const database=async(path,options={})=>{
     const url=new URL(path,'https://db.example.test'),data=options.body?JSON.parse(options.body):null,method=options.method||'GET';state.calls.push({path,method,data});
     let payload;const table=url.pathname.split('/').at(-1),id=url.searchParams.get('id')?.slice(3);
-    if(table==='store_checkout_settings')payload=[{enabled,shipping_paise:shipping,recovery_token:'f'.repeat(64)}];
+    if(table==='store_checkout_settings')payload=[{enabled,shipping_paise:shipping,payment_method:paymentMethod,shipping_policy:weightShipping?'courier-2026-10-17':null,recovery_token:'f'.repeat(64)}];
     else if(table==='store_allow_checkout')payload=state.allowed;
     else if(table==='Product')payload=[{id:1,store_id:'p1',name:'Oil',store_name:'Groundnut Oil',retailer_id:'meta-oil',catalog_id:'catalog'}];
-    else if(table==='ProductVariant')payload=catalogVariants||[{id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:null,availability_status:'available',retailer_id:variantRetailerId}];
+    else if(table==='ProductVariant')payload=catalogVariants||[{id:10,product_id:1,position:0,size:'500 ml',price:175,inventory_quantity:null,availability_status:'available',retailer_id:variantRetailerId,shipping_weight_grams:500}];
     else if(table==='Profile'){
       if(method==='POST')state.profiles.push(data);
       payload=state.profiles.filter(p=>p.whatsAppUserId===url.searchParams.get('whatsAppUserId')?.slice(3));
@@ -23,8 +23,8 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRe
     else if(table==='store_checkout_sessions'){
       if(method==='POST')state.sessions.push({...data,status:'preparing',expires_at:new Date(Date.now()+1800000).toISOString()});
       if(method==='PATCH')Object.assign(state.sessions.find(s=>s.id===id),data);
-      payload=state.sessions.filter(s=>id?s.id===id:s.provider_order_id===url.searchParams.get('provider_order_id')?.slice(3));
-    }else if(table==='store_finalize_checkout'){
+      payload=state.sessions.filter(s=>id?s.id===id:(url.searchParams.has('provider_payment_link_id')?s.provider_payment_link_id===url.searchParams.get('provider_payment_link_id').slice(3):s.provider_order_id===url.searchParams.get('provider_order_id')?.slice(3)));
+    }else if((table==='store_finalize_checkout'||table==='store_finalize_link_checkout')){
       const s=state.sessions.find(s=>s.id===data.p_session_id);
       if(s.status!=='paid'){state.finalized++;Object.assign(s,{status:'paid',order_id:1,provider_payment_id:data.p_payment_id,paid_at:data.p_paid_at});state.orders.push({id:1,reference_id:'WEB-fixture',address_id:crypto.randomUUID(),status:'paid'});}
       payload={reference:'WEB-fixture'};
@@ -43,9 +43,11 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRe
     if(state.providerReads && (url.endsWith('/payments/pay_fixture')||url.endsWith('/orders/order_fixture'))){
       await new Promise(resolve=>state.providerReads.set(url.split('/').at(-1),resolve));
     }
+    if(url.endsWith('/payment_links')&&options.method==='POST'){state.remoteOrders++;const payload=JSON.parse(options.body);state.link={...payload,id:'plink_fixture',short_url:'https://rzp.io/i/fixture',order_id:'order_fixture',status:'created',payments:[],amount_paid:0};return Response.json(state.link)}
+    if(url.endsWith('/payment_links/plink_fixture'))return Response.json(state.link);
     if(url.endsWith('/orders')&&options.method==='POST'){state.remoteOrders++;return Response.json({id:'order_fixture',amount:JSON.parse(options.body).amount,currency:'INR'})}
     if(url.endsWith('/orders/order_fixture/payments'))return Response.json({items:[state.payment]});
-    if(url.endsWith('/orders/order_fixture'))return Response.json({id:'order_fixture',amount:40000,currency:'INR',status:'paid'});
+    if(url.endsWith('/orders/order_fixture'))return Response.json({id:'order_fixture',amount:state.payment.amount,currency:'INR',status:'paid'});
     if(url.endsWith('/payments/pay_fixture'))return Response.json(state.payment);
     throw new Error('Unexpected network call: '+url);
   };
@@ -152,3 +154,26 @@ test('a pack marked out of stock is rejected before any payment order is created
  const f=fixture({catalogVariants:[{id:10,product_id:1,size:'500 ml',price:175,inventory_quantity:null,availability_status:'unavailable',retailer_id:'pack-500'}]});
  await assert.rejects(f.service.create(body()),/unavailable/);assert.equal(f.state.remoteOrders,0);assert.equal(f.state.finalized,0);
 });
+
+ test('new website links quote server weights and require acceptance of the exact total before creation',async()=>{
+  const f=fixture({paymentMethod:'payment_link',weightShipping:true}),b=body();
+  const q=await f.service.preview({lines:b.lines});assert.equal(q.shippingPaise,4000);assert.equal(q.amountPaise,39000);
+  await assert.rejects(f.service.create({...b,expectedAmountPaise:1}),/total changed/);assert.equal(f.state.remoteOrders,0);assert.equal(f.state.sessions.length,0);
+  const result=await f.service.create({...b,expectedAmountPaise:q.amountPaise});assert.equal(result.paymentMethod,'payment_link');assert.equal(result.amountPaise,39000);
+  assert.equal(f.state.sessions[0].shipping_quote.items[0].weightGrams,500);assert.equal(f.state.sessions[0].items[0].variantId,10);
+  assert.equal((await f.service.create({...b,expectedAmountPaise:q.amountPaise})).paymentUrl,result.paymentUrl);assert.equal(f.state.remoteOrders,1);
+  await assert.rejects(f.service.status({...b,token:'f'.repeat(64)}),/not found/);
+ });
+ test('link webhooks and closed-browser recovery use exact provider membership and finalize once',async()=>{
+  const f=fixture({paymentMethod:'payment_link',weightShipping:true}),b={...body(),expectedAmountPaise:39000};await f.service.create(b);
+  f.state.payment.amount=39000;Object.assign(f.state.link,{status:'paid',amount_paid:39000,payments:[{payment_id:'pay_fixture',amount:39000,status:'captured'}]});
+  const event=JSON.stringify({event:'payment_link.paid',payload:{payment_link:{entity:f.state.link},payment:{entity:f.state.payment}}});
+  await assert.rejects(f.service.webhook(event,mac('live-hook',event)),/mode/);assert.equal(f.state.finalized,0);
+  await f.service.webhook(event,mac('test-hook',event));await f.service.webhook(event,mac('test-hook',event));assert.equal(f.state.finalized,1);
+  assert.equal((await f.service.status(b)).status,'paid');await f.flush();
+ });
+ test('weight-based quote rejects missing weights before profiles, links or orders',async()=>{
+  const f=fixture({paymentMethod:'payment_link',weightShipping:true,catalogVariants:[{id:10,product_id:1,size:'1 L',price:300,availability_status:'available',inventory_quantity:null,shipping_weight_grams:null}]}),b=body();
+  await assert.rejects(f.service.preview({lines:b.lines}),/weight is missing/);
+  await assert.rejects(f.service.create({...b,expectedAmountPaise:60000}),/weight is missing/);assert.equal(f.state.remoteOrders,0);assert.equal(f.state.sessions.length,0);
+ });

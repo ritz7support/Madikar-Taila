@@ -60,7 +60,7 @@
       <p id="checkout-status" class="checkout-status" role="status" hidden></p>
       <button id="razorpay-pay" class="checkout-pay" type="submit" disabled>Pay securely with Razorpay</button>
     </form>
-    <div id="checkout-confirming" class="checkout-confirming" role="status" aria-live="polite" hidden><div class="confirmation-spinner" aria-hidden="true"></div><h3 id="confirmation-title">Confirming your payment</h3><p id="confirmation-progress">Please wait while we verify your payment and record your order.</p></div>
+    <div id="checkout-confirming" class="checkout-confirming" role="status" aria-live="polite" hidden><div class="confirmation-spinner" aria-hidden="true"></div><h3 id="confirmation-title">Confirming your payment</h3><p id="confirmation-progress">Please wait while we verify your payment and record your order.</p><div class="payment-link-actions"><a id="payment-resume" class="checkout-pay" hidden>Resume secure payment</a><button id="payment-check" type="button">Check payment status</button><button id="payment-cancel" type="button" hidden>Cancel link &amp; edit bag</button></div></div>
     <div id="checkout-success" class="checkout-success" hidden><div class="success-mark">✓</div><h3 id="checkout-success-title">Payment received</h3><p>Your order and delivery address have been submitted. Please save the payment reference below.</p><strong id="payment-reference"></strong><button id="checkout-done" class="outline-button" type="button">Continue shopping</button></div>
   </section>
 </body>

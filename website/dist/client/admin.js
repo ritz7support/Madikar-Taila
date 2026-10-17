@@ -235,7 +235,18 @@ function shipmentMessage(order){
   const check=['pending','sending'].includes(status);
   return `<p>${escapeHtml(messages[status] || 'Shipping message status unavailable.')}</p>${retry?`<button type="button" data-retry-shipment="${order.id}">Retry shipping message</button>`:''}${check?`<button type="button" data-check-shipment="${order.id}">Check message status</button>`:''}`;
 }
-function renderShipmentMessage(order){$(`#shipment-message-${order.id}`).innerHTML=shipmentMessage(order)}
+function deliveryMessage(order){
+  const note=order.delivery_notification;
+  if(!note)return '';
+  const status=note.status;
+  const messages={pending:'Delivery message queued.',sending:'Sending delivery message…',sent:'Delivery message accepted by WhatsApp.',
+    failed:[132001,132015,132016].includes(note.error_code)?'The WhatsApp template is not ready. Retry after approval.':'The delivery message could not be sent.',
+    uncertain:'Delivery message needs review before retrying.',cancelled:'Delivery message cancelled because the order status changed.'};
+  const retry=['failed','cancelled'].includes(status)&&order.fulfillment_status==='completed'&&note.attempts<8;
+  const check=['pending','sending'].includes(status);
+  return `<p>${escapeHtml(messages[status] || 'Delivery message status unavailable.')}</p>${retry?`<button type="button" data-retry-delivery="${order.id}">Retry delivery message</button>`:''}${check?`<button type="button" data-check-delivery="${order.id}">Check message status</button>`:''}`;
+}
+function renderShipmentMessage(order){$(`#shipment-message-${order.id}`).innerHTML=shipmentMessage(order)+deliveryMessage(order)}
 function renderOrders(){
   $('#orders-loading').hidden=!state.orderLoading;
   $('#orders-list').setAttribute('aria-busy',String(state.orderLoading));
@@ -251,10 +262,10 @@ function renderOrders(){
     const payments=escapeHtml(paymentLabel).replaceAll('_',' ') + (payment?.provider_payment_id?' · '+escapeHtml(payment.provider_payment_id):'');
     const paid=o.status!=='pending_payment';
     const stage=['processing','shipped','completed','cancelled'].includes(o.fulfillment_status)?o.fulfillment_status:'processing';
-    const statusControl=`<label class="visually-hidden" for="order-stage-${o.id}">Order status for ${escapeHtml(o.reference_id)}</label><select id="order-stage-${o.id}" data-order-stage="${o.id}" aria-label="Order status for ${escapeHtml(o.reference_id)}" ${paid?'':'disabled'}>${[['processing','Processing'],['shipped','Shipped'],['completed','Completed'],['cancelled','Cancelled']].map(([value,label])=>`<option value="${value}" ${stage===value?'selected':''}>${label}</option>`).join('')}</select>${paid?'':'<small class="pending-payment">Awaiting payment</small>'}`;
+    const statusControl=`<label class="visually-hidden" for="order-stage-${o.id}">Order status for ${escapeHtml(o.reference_id)}</label><select id="order-stage-${o.id}" data-order-stage="${o.id}" aria-label="Order status for ${escapeHtml(o.reference_id)}" ${paid?'':'disabled'}>${[['processing','Processing'],['shipped','Shipped'],['completed','Delivered'],['cancelled','Cancelled']].map(([value,label])=>`<option value="${value}" ${stage===value?'selected':''}>${label}</option>`).join('')}</select>${paid?'':'<small class="pending-payment">Awaiting payment</small>'}`;
     return `<details class="order-card"><summary><span><strong>${escapeHtml(o.reference_id)}</strong><small>${escapeHtml(date)}</small></span><span>${escapeHtml(customer)}</span><span><span class="pill ${o.source==='store'?'pill--store':'pill--whatsapp'}">${o.source==='store'?'Website':'WhatsApp'}</span></span><span class="order-stage">${statusControl}</span><strong>${money(o.total)}</strong></summary>
       <div class="order-detail"><div><h3>Items</h3><ul>${items || '<li>No line items</li>'}</ul><p>Subtotal ${money(o.subtotal)} · Shipping ${money(o.shipping)}</p></div>
-      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>Payment: ${payments}</p><p id="order-tracking-${o.id}">${o.tracking_id?'Tracking ID: '+escapeHtml(o.tracking_id):''}</p><p id="order-delivery-${o.id}">${deliveryEstimate(o)}</p><div class="shipment-message" id="shipment-message-${o.id}">${shipmentMessage(o)}</div></div></div></details>`;
+      <div><h3>Customer & delivery</h3><p>${escapeHtml(customer)}${phone?' · '+escapeHtml(phone):''}</p><p>${escapeHtml(o.customer_email || o.profile?.email || '')}</p><p>${escapeHtml(orderAddress(o))}</p><p>Payment: ${payments}</p><p id="order-tracking-${o.id}">${o.tracking_id?'Tracking ID: '+escapeHtml(o.tracking_id):''}</p><p id="order-delivery-${o.id}">${deliveryEstimate(o)}</p><div class="shipment-message" id="shipment-message-${o.id}">${shipmentMessage(o)}${deliveryMessage(o)}</div></div></div></details>`;
   }).join(''):state.orderLoading?'':'<p class="panel empty">No orders in this view.</p>';
   $('#orders-page-label').textContent=`Page ${state.ordersPage+1} · up to 20 orders`;
   $('#previous-orders').disabled=state.orderLoading||state.ordersPage===0;
@@ -327,6 +338,16 @@ $('#orders-list').addEventListener('click',event=>{
   if(event.target.closest('[data-order-stage]'))event.stopPropagation();
   const edit=event.target.closest('[data-edit-shipment]');
   if(edit){const order=state.orders.find(o=>String(o.id)===edit.dataset.editShipment);if(order)openShipmentDialog(order,$(`#order-stage-${order.id}`));return}
+  const deliveryButton=event.target.closest('[data-retry-delivery],[data-check-delivery]');
+  if(deliveryButton){
+    const id=deliveryButton.dataset.retryDelivery||deliveryButton.dataset.checkDelivery;
+    const order=state.orders.find(o=>String(o.id)===id);if(!order)return;
+    deliveryButton.disabled=true;
+    adminApi(deliveryButton.dataset.retryDelivery?'admin_retry_delivery_notification':'admin_delivery_notification',{id:order.id})
+      .then(data=>{order.delivery_notification=data.deliveryNotification;renderShipmentMessage(order)})
+      .catch(error=>{setStatus(error.message,'error');deliveryButton.disabled=false});
+    return;
+  }
   const button=event.target.closest('[data-retry-shipment],[data-check-shipment]');
   if(button){
     const id=button.dataset.retryShipment || button.dataset.checkShipment;
@@ -354,11 +375,12 @@ async function updateOrderStage(order,select,stage,trackingId,estimatedDeliveryD
     order.tracking_id=data.trackingId ?? order.tracking_id;
     if(Object.hasOwn(data,'estimatedDeliveryDays'))order.estimated_delivery_days=data.estimatedDeliveryDays;
     if(Object.hasOwn(data,'shipmentNotification'))order.shipment_notification=data.shipmentNotification;
+    if(Object.hasOwn(data,'deliveryNotification'))order.delivery_notification=data.deliveryNotification;
     select.value=data.fulfillmentStatus;
     $(`#order-tracking-${order.id}`).textContent=order.tracking_id?'Tracking ID: '+order.tracking_id:'';
     $(`#order-delivery-${order.id}`).textContent=deliveryEstimate(order);
     renderShipmentMessage(order);
-    setStatus(`Order ${order.reference_id} marked ${data.fulfillmentStatus}.`,'success');
+    setStatus(`Order ${order.reference_id} marked ${data.fulfillmentStatus==='completed'?'delivered':data.fulfillmentStatus}.`,'success');
   }catch(error){select.value=previous;throw error}
   finally{select.disabled=false}
 }
@@ -388,12 +410,12 @@ $('#shipping-form').addEventListener('submit',async event=>{
   if(estimatedDeliveryDays!==null&&(!Number.isInteger(estimatedDeliveryDays)||estimatedDeliveryDays<1||estimatedDeliveryDays>2147483647)){
     $('#shipping-error').textContent='Estimated delivery must be a positive whole number of days.';$('#delivery-days').focus();return;
   }
-  shipment.saving=true;
+  shipment.saving=true;$('#shipping-save').textContent='Saving…';
   $('#shipping-error').textContent='';
   $('#shipping-save').disabled=true;$('#shipping-cancel').disabled=true;$('#tracking-id').disabled=true;$('#delivery-days').disabled=true;
   try{await updateOrderStage(shipment.order,shipment.select,'shipped',trackingId,estimatedDeliveryDays);$('#shipping-dialog').close()}
   catch(error){$('#shipping-error').textContent=error.message}
-  finally{shipment.saving=false;$('#shipping-save').disabled=false;$('#shipping-cancel').disabled=false;$('#tracking-id').disabled=false;$('#delivery-days').disabled=false}
+  finally{shipment.saving=false;$('#shipping-save').textContent='Save';$('#shipping-save').disabled=false;$('#shipping-cancel').disabled=false;$('#tracking-id').disabled=false;$('#delivery-days').disabled=false}
 });
 
 async function start(){

@@ -1,7 +1,7 @@
 const checkout=window.MADIKAR_STORE;
 const checkoutForm=document.querySelector('#shipping-form'),checkoutStatus=document.querySelector('#checkout-status'),payButton=document.querySelector('#razorpay-pay');
 const sessionKey='madikar-checkout-session';
-let paymentConfig={ready:false,shippingPaise:null},lastCheckoutFocus=null,busy=false,confirmed=false,lastPaidSessionId=null;
+let paymentConfig={ready:false,shippingPaise:null},lastCheckoutFocus=null,busy=false,confirmed=false,lastPaidSessionId=null,quoteRequest=0;
 const inr=checkout.money;
 const cartLines=()=>checkout.cartEntries().map(({key,qty})=>{const[id,variant]=key.split(':');return{id,variant:Number(variant),quantity:qty}});
 const setStatus=(message,tone='note')=>{checkoutStatus.textContent=message;checkoutStatus.dataset.tone=tone;checkoutStatus.hidden=!message};
@@ -12,17 +12,21 @@ const saveSession=session=>sessionStorage.setItem(sessionKey,JSON.stringify(sess
 const identity=session=>({sessionId:session.sessionId,token:session.token});
 function renderCheckoutSummary(){
   const subtotal=subtotalPaise();
-  document.querySelector('#checkout-items-total').textContent=inr(subtotal/100);
+  document.querySelector('#checkout-items-total').textContent=inr((paymentConfig.subtotalPaise??subtotal)/100);
   document.querySelector('#checkout-shipping').textContent=paymentConfig.ready?inr(paymentConfig.shippingPaise/100):'Confirmed by seller';
-  document.querySelector('#checkout-grand-total').textContent=paymentConfig.ready?inr((subtotal+paymentConfig.shippingPaise)/100):'Pending';
+  document.querySelector('#checkout-grand-total').textContent=paymentConfig.ready?inr((paymentConfig.amountPaise??subtotal+paymentConfig.shippingPaise)/100):'Pending';
   payButton.disabled=busy||!paymentConfig.ready||subtotal===0||checkout.cartEntries().some(e=>e.v.orderable===false);
 }
 async function loadPaymentConfig(){
+  const request=++quoteRequest,lines=cartLines();paymentConfig={ready:false,shippingPaise:null};renderCheckoutSummary();
   try{
     const response=await fetch('/api/checkout/config',{headers:{Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(15000)});
     if(!response.ok)throw new Error();const config=await response.json();
-    paymentConfig={ready:config.ready===true&&Number.isInteger(config.shippingPaise),shippingPaise:config.shippingPaise};
-  }catch{paymentConfig={ready:false,shippingPaise:null}}
+    let quote={};
+    if(config.ready&&(config.weightShipping||config.paymentMethod==='payment_link'))quote=await jsonPost('/api/checkout/quote',{lines});
+    if(request!==quoteRequest||JSON.stringify(lines)!==JSON.stringify(cartLines()))return;
+    paymentConfig={ready:config.ready===true&&Number.isInteger(quote.shippingPaise??config.shippingPaise),shippingPaise:quote.shippingPaise??config.shippingPaise,paymentMethod:config.paymentMethod||'order',...quote};
+  }catch(error){if(request!==quoteRequest)return;paymentConfig={ready:false,shippingPaise:null};setStatus(error.message||'Shipping could not be calculated. Please try again.','error')}
   renderCheckoutSummary();
 }
 function showModal(){
@@ -30,7 +34,7 @@ function showModal(){
   document.querySelector('#checkout-modal').classList.add('open');document.querySelector('#checkout-modal').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
 }
 function openCheckout(){
-  const pending=readSession();if(pending?.confirming){confirmingView();void waitForConfirmation(pending);return}
+  const pending=readSession();if(pending?.confirming||(pending?.paymentMethod==='payment_link'&&pending.requested)){confirmingView();void waitForConfirmation(pending);return}
   if(!checkout.cartEntries().length||checkout.cartEntries().some(e=>e.v.orderable===false))return;
   document.querySelector('#checkout-modal').classList.remove('payment-confirmed','payment-confirming');document.querySelector('#checkout-modal').setAttribute('aria-labelledby','checkout-title');
   showModal();checkoutForm.hidden=false;document.querySelector('#checkout-success').hidden=true;document.querySelector('#checkout-confirming').hidden=true;setStatus('');renderCheckoutSummary();loadPaymentConfig();checkoutForm.elements.name.focus();
@@ -55,7 +59,7 @@ function loadRazorpayScript(){
 }
 async function jsonPost(url,body){
   const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(50000)});
-  const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'The checkout request could not be completed.');return data;
+  const data=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(data.error||'The checkout request could not be completed.'),{status:response.status});return data;
 }
 async function prepareSession(lines,address){
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({lines,address})));
@@ -85,34 +89,73 @@ function showPaid(result,session){
   // Display state only: this flag is never accepted as proof of payment.
   history.replaceState(null,'','/?payment=true');document.querySelector('#checkout-done').focus();return true;
 }
-async function checkPayment(session){return showPaid(await jsonPost('/api/checkout/status',identity(session)),session)}
-let confirmationCheck=null;
+function paymentLinkControls(result,session){
+  const resume=document.querySelector('#payment-resume'),cancel=document.querySelector('#payment-cancel');
+  if(!resume||!cancel)return;
+  resume.hidden=true;cancel.hidden=true;
+  if(session.paymentMethod!=='payment_link'||result.status!=='pending')return;
+  let safe=false;try{const u=new URL(result.paymentUrl);safe=u.protocol==='https:'&&!u.username&&!u.password&&['rzp.io','rzp.io.in','razorpay.com'].includes(u.hostname)}catch{}
+  if(safe){resume.href=result.paymentUrl;resume.hidden=false;cancel.hidden=false;}
+}
+async function checkPayment(session){
+  let result;
+  try{result=await jsonPost('/api/checkout/status',identity(session));}
+  catch(error){
+    if(error.status!==404||session.paymentMethod!=='payment_link')throw error;
+    if(readSession()?.sessionId!==session.sessionId)return true;
+    if(readSession()?.sessionId===session.sessionId)sessionStorage.removeItem(sessionKey);
+    busy=false;closeCheckout();openCheckout();setStatus('The earlier checkout was not created. Please review your total and try again.');return true;
+  }
+  if(readSession()?.sessionId!==session.sessionId)return true;
+  if(showPaid(result,session))return true;
+  if(['cancelled','expired'].includes(result.status)){
+    if(readSession()?.sessionId===session.sessionId)sessionStorage.removeItem(sessionKey);
+    busy=false;closeCheckout();openCheckout();setStatus('The earlier payment link is '+result.status+'. Review your total before starting a new payment.');return true;
+  }
+  paymentLinkControls(result,session);return false;
+}
+let confirmationCheck=null,confirmationSessionId=null;
 function confirmingView(message='Please wait while we verify your payment and record your order.'){
   busy=true;showModal();checkoutForm.hidden=true;setStatus('');
   document.querySelector('#checkout-modal').classList.add('payment-confirming');document.querySelector('#checkout-modal').setAttribute('aria-labelledby','confirmation-title');
   document.querySelector('#checkout-success').hidden=true;
   document.querySelector('#checkout-confirming').hidden=false;
   document.querySelector('#confirmation-progress').textContent=message;
+  const resume=document.querySelector('#payment-resume'),cancel=document.querySelector('#payment-cancel');
+  if(resume)resume.hidden=true;if(cancel)cancel.hidden=true;
 }
 async function waitForConfirmation(session){
-  if(confirmationCheck)return confirmationCheck;
-  confirmationCheck=(async()=>{
-    for(const delay of [1000,1500,2500,4000,6000]){
+  if(confirmationCheck&&confirmationSessionId===session.sessionId)return confirmationCheck;
+  confirmationSessionId=session.sessionId;
+  const pendingCheck=(async()=>{
+    for(const delay of [0,1000,1500,2500,4000,6000]){
       await new Promise(resolve=>setTimeout(resolve,delay));
+      if(readSession()?.sessionId!==session.sessionId)return false;
       try{if(await checkPayment(session))return true}catch{}
     }
-    document.querySelector('#confirmation-progress').textContent='Your payment is still being checked. Please refresh shortly before trying another payment, or contact +91 99722 67897 with your payment reference.';
+    if(readSession()?.sessionId!==session.sessionId)return false;
+    document.querySelector('#confirmation-progress').textContent=session.paymentMethod==='payment_link'?'Payment has not been confirmed yet. Resume your payment below, or cancel the link to change your bag. If you have paid, check again shortly.':'Your payment is still being checked. Please refresh shortly before trying another payment, or contact +91 99722 67897 with your payment reference.';
     return false;
   })();
-  try{return await confirmationCheck}finally{confirmationCheck=null}
+  confirmationCheck=pendingCheck;
+  try{return await pendingCheck}finally{if(confirmationCheck===pendingCheck){confirmationCheck=null;confirmationSessionId=null}}
 }
 checkoutForm.addEventListener('submit',async event=>{
   event.preventDefault();if(busy||!checkoutForm.reportValidity())return;
   if(!paymentConfig.ready)return setStatus('Online payment has not been enabled yet.','error');
   const lines=cartLines(),address=addressFromForm();busy=true;renderCheckoutSummary();setStatus('Preparing your secure payment…');
   try{
-    const session=await prepareSession(lines,address),order=await jsonPost('/api/checkout/order',{...identity(session),lines,address});
-    if(order.amountPaise!==subtotalPaise()+paymentConfig.shippingPaise)throw new Error('The payment total changed. Please review your bag.');
+    const session=await prepareSession(lines,address);
+    if(paymentConfig.paymentMethod==='payment_link'){session.paymentMethod='payment_link';session.requested=true;saveSession(session);}
+    const expectedAmountPaise=paymentConfig.amountPaise??subtotalPaise()+paymentConfig.shippingPaise;
+    const order=await jsonPost('/api/checkout/order',{...identity(session),lines,address,expectedAmountPaise});
+    if(order.amountPaise!==expectedAmountPaise)throw new Error('The payment total changed. Please review your bag.');
+    if(order.paymentMethod==='payment_link'){
+      const u=new URL(order.paymentUrl);
+      if(u.protocol!=='https:'||u.username||u.password||!['rzp.io','rzp.io.in','razorpay.com'].includes(u.hostname))throw new Error('The secure payment link is invalid.');
+      session.paymentMethod='payment_link';session.confirming=true;saveSession(session);confirmingView('Opening your secure Razorpay payment link…');
+      window.location.assign(u.href);return;
+    }
     await loadRazorpayScript();
     const razorpay=new window.Razorpay({
       key:order.keyId,order_id:order.orderId,amount:order.amountPaise,currency:'INR',name:'Madikar Taila',description:'Madikar Taila order',
@@ -137,14 +180,19 @@ checkoutForm.addEventListener('submit',async event=>{
     });
     razorpay.on('payment.failed',response=>setStatus(response.error?.description||'Payment was not completed. You can retry in the payment window.','error'));
     razorpay.open();setStatus('Complete your payment in the secure Razorpay window.');
-  }catch(error){if(/checkout expired/.test(error.message))sessionStorage.removeItem(sessionKey);busy=false;renderCheckoutSummary();setStatus(error.message,'error')}
+  }catch(error){
+    if(/checkout expired|Your checkout total changed/.test(error.message))sessionStorage.removeItem(sessionKey);
+    busy=false;renderCheckoutSummary();setStatus(error.message,'error');
+    if(/Your checkout total changed/.test(error.message))void loadPaymentConfig();
+  }
 });
 async function restorePayment(){
   const session=readSession(),returning=new URLSearchParams(location.search).has('payment');
+  if(returning)history.replaceState(null,'','/');
   if(!session){if(returning)history.replaceState(null,'','/');return}
   try{
     if(await checkPayment(session))return;
-    if(session.confirming){confirmingView();renderCheckoutSummary();void waitForConfirmation(session)}
+    if(session.confirming||session.paymentMethod==='payment_link'){confirmingView();renderCheckoutSummary();void waitForConfirmation(session)}
   }catch{if(session.confirming){confirmingView();renderCheckoutSummary();void waitForConfirmation(session)}}
   if(returning)history.replaceState(null,'','/');
 }
@@ -152,5 +200,17 @@ document.querySelector('#checkout-open').addEventListener('click',openCheckout);
 document.querySelector('#checkout-close').addEventListener('click',closeCheckout);
 document.querySelector('#checkout-overlay').addEventListener('click',closeCheckout);
 document.querySelector('#checkout-done').addEventListener('click',closeCheckout);
+document.querySelector('#payment-check')?.addEventListener('click',()=>{const s=readSession();if(s){confirmingView();void waitForConfirmation(s)}});
+document.querySelector('#payment-cancel')?.addEventListener('click',async()=>{
+  const s=readSession();if(!s)return;
+  const button=document.querySelector('#payment-cancel');button.disabled=true;
+  try{
+    const result=await jsonPost('/api/checkout/cancel',identity(s));
+    if(showPaid(result,s))return;
+    if(!['cancelled','expired'].includes(result.status))throw new Error('Payment is still being checked. Try again shortly.');
+    sessionStorage.removeItem(sessionKey);busy=false;closeCheckout();openCheckout();
+  }catch(error){document.querySelector('#confirmation-progress').textContent=error.message}
+  finally{button.disabled=false}
+});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeCheckout()});
 restorePayment();

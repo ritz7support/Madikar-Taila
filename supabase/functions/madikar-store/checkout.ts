@@ -1,4 +1,6 @@
 import { createPaymentConfirmationService } from './confirmation.ts';
+import { createWebsitePaymentLinks } from './payment-links.ts';
+import { calculateShipping } from '../_shared/shipping.ts';
 // Website-only payment processing. Does not import or modify bot handlers.
 const encoder = new TextEncoder();
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -28,7 +30,8 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
   const confirmations=createPaymentConfirmationService({database,env,fetch:fetcher});
   const db=async(path,options={})=>{const r=await database(path,options);if(r.error)fail(r.error,r.status||502);return r.payload;};
   const rpc=(name,body)=>db('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(body)});
-  const patch=(id,data)=>db('/rest/v1/store_checkout_sessions?id=eq.'+id,{method:'PATCH',body:JSON.stringify(data)});
+  const patch=(id,data,condition='')=>db('/rest/v1/store_checkout_sessions?id=eq.'+id+condition,{method:'PATCH',body:JSON.stringify(data)});
+  const links=createWebsitePaymentLinks({razorpay,patch,rpc,background,work});
   function keys(mode){
     if(!['test','live'].includes(mode))fail('Online payment is not available.',503);
     const prefix='RAZORPAY_'+mode.toUpperCase();
@@ -38,10 +41,11 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
   }
   async function config(){
     const mode=(env('RAZORPAY_MODE')||'').trim().toLowerCase();
-    const [settings]=await db('/rest/v1/store_checkout_settings?select=enabled,shipping_paise&id=eq.true');
+    const [settings]=await db('/rest/v1/store_checkout_settings?select=enabled,shipping_paise,payment_method,shipping_policy&id=eq.true');
     const shippingPaise=Number.isInteger(settings?.shipping_paise)?settings.shipping_paise:null;
     let configured=false;try{keys(mode);configured=true;}catch{}
-    return {ready:configured&&settings?.enabled===true&&shippingPaise!==null,shippingPaise,mode:['test','live'].includes(mode)?mode:null};
+    const weightShipping=settings?.shipping_policy==='courier-2026-10-17';
+    return {ready:configured&&settings?.enabled===true&&(weightShipping||shippingPaise!==null),shippingPaise,weightShipping,paymentMethod:settings?.payment_method||'order',mode:['test','live'].includes(mode)?mode:null};
   }
   async function razorpay(mode,path,options={}){
     const {id,secret}=keys(mode);
@@ -54,7 +58,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
     if(!Array.isArray(raw)||raw.length<1||raw.length>16)fail('Please select between 1 and 16 different products.');
     const [products,variants]=await Promise.all([
       db('/rest/v1/Product?select=id,store_id,store_name,name,retailer_id,catalog_id&store_active=eq.true&store_id=not.is.null&slug=not.is.null'),
-      db('/rest/v1/ProductVariant?select=id,product_id,retailer_id,position,size,price,inventory_quantity,availability_status&order=position.asc,id.asc')
+      db('/rest/v1/ProductVariant?select=id,product_id,retailer_id,position,size,price,inventory_quantity,availability_status,shipping_weight_grams&order=position.asc,id.asc')
     ]);
     const seen=new Set();let subtotalPaise=0,catalogId=null;
     const items=raw.map(line=>{
@@ -67,10 +71,24 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
       if(!Number.isSafeInteger(unitPaise)||unitPaise<100||Math.abs(price-unitPaise)>0.001)fail('Your bag contains an invalid price.');
       if(catalogId!==null&&catalogId!==product.catalog_id)fail('Your bag contains products from different catalogues.');
       catalogId=product.catalog_id;subtotalPaise+=unitPaise*line.quantity;
-      return {productId:product.id,variantId:variant.id,retailerId:variant.retailer_id||product.retailer_id,name:`${product.store_name||product.name} (${variant.size})`,quantity:line.quantity,unitPaise};
+      return {productId:product.id,variantId:variant.id,retailerId:variant.retailer_id||product.retailer_id,name:`${product.store_name||product.name} (${variant.size})`,quantity:line.quantity,unitPaise,weightGrams:variant.shipping_weight_grams};
     });
     if(!catalogId||subtotalPaise<100||subtotalPaise>10000000)fail('The order amount is outside the supported range.');
     return {items,subtotalPaise,catalogId};
+  }
+  async function pricedQuote(lines,cfg){
+    const q=await quote(lines);
+    try{q.shippingQuote=cfg.weightShipping?calculateShipping(q.items):null}catch(error){fail(error.message)}
+    if(q.shippingQuote)q.shippingQuote.items=q.items.map(i=>({variantId:i.variantId,retailerId:i.retailerId,quantity:i.quantity,weightGrams:i.weightGrams}));
+    q.shippingPaise=q.shippingQuote?.shippingPaise??cfg.shippingPaise;
+    q.totalPaise=q.subtotalPaise+q.shippingPaise;
+    if(q.totalPaise>10000000)fail('The order amount is outside the supported range.');
+    return q;
+  }
+  async function preview(body){
+    const cfg=await config();if(!cfg.ready)fail('Online payment is not available yet.',503);
+    const q=await pricedQuote(body.lines,cfg);
+    return {subtotalPaise:q.subtotalPaise,shippingPaise:q.shippingPaise,amountPaise:q.totalPaise,shipping:q.shippingQuote};
   }
   async function profile(address){
     const phone='91'+address.phone;
@@ -109,14 +127,16 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
     if(!tokenPattern.test(body.clientHash||''))fail('Checkout could not be prepared.',400);
     const allowed=await rpc('store_allow_checkout',{p_client_hash:body.clientHash,p_phone_hash:await digest('phone:'+a.phone)});
     if(!allowed)fail('Too many checkout attempts. Please try again later.',429);
-    const q=await quote(body.lines),total=q.subtotalPaise+cfg.shippingPaise;
-    if(total>10000000)fail('The order amount is outside the supported range.');
+    const q=await pricedQuote(body.lines,cfg),total=q.totalPaise;
+    if(cfg.paymentMethod==='payment_link'&&body.expectedAmountPaise!==total)fail('Your checkout total changed. Refresh and review the total before paying.',409);
     const profileId=await profile(a);
     const s={id:body.sessionId,token_hash:await digest(body.token),request_hash:requestHash,mode:cfg.mode,
       profile_id:profileId,phone:'91'+a.phone,customer:a,items:q.items,catalog_id:q.catalogId,
-      subtotal_paise:q.subtotalPaise,shipping_paise:cfg.shippingPaise,total_paise:total};
+      subtotal_paise:q.subtotalPaise,shipping_paise:q.shippingPaise,total_paise:total,
+      payment_method:cfg.paymentMethod,shipping_quote:q.shippingQuote,expires_at:new Date(Date.now()+1800000).toISOString()};
     try{await db('/rest/v1/store_checkout_sessions',{method:'POST',body:JSON.stringify(s)});}
     catch(error){if(error.status===409)return prepared(await session(body),requestHash);throw error;}
+    if(s.payment_method==='payment_link')return links.create(s);
     const order=await razorpay(s.mode,'/orders',{method:'POST',body:JSON.stringify({amount:total,currency:'INR',receipt:'WEB'+s.id.replaceAll('-',''),notes:{website_session:s.id,source:'madikar_website'}})});
     if(!/^order_[A-Za-z0-9]+$/.test(order.id||'')||order.amount!==total||order.currency!=='INR')fail('The payment order could not be prepared.',502);
     await patch(s.id,{provider_order_id:order.id,status:'ready'});
@@ -125,6 +145,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
   function prepared(s,requestHash){
     if(s.request_hash!==requestHash)fail('Delivery details or bag changed. Please start a new checkout.',409);
     if(s.status==='paid')fail('This checkout has already been paid.',409);
+    if(s.payment_method==='payment_link')return links.prepared(s);
     if(Date.parse(s.expires_at)<Date.now())fail('This checkout expired. Please start a new checkout.',409);
     if(!s.provider_order_id)fail('Payment preparation is still pending. Please try again shortly.',503);
     return {sessionId:s.id,orderId:s.provider_order_id,amountPaise:s.total_paise,keyId:keys(s.mode).id,mode:s.mode};
@@ -144,6 +165,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
   }
   async function verify(body){
     const s=await session(body);
+    if(s.payment_method==='payment_link')fail('Use payment status to verify this payment link.');
     if(body.orderId!==s.provider_order_id||!/^pay_[A-Za-z0-9]+$/.test(body.paymentId||'')||!/^[a-f0-9]{64}$/i.test(body.signature||''))fail('The payment response is incomplete.');
     if(!same(await hmac(keys(s.mode).secret,s.provider_order_id+'|'+body.paymentId),body.signature.toLowerCase()))fail('Payment signature could not be verified.');
     if(s.status==='paid'){
@@ -159,12 +181,14 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
     return capture(s,payment,order);
   }
   async function reconcile(s){
+    if(s.payment_method==='payment_link')return links.reconcile(s);
     if(!s.provider_order_id)return {status:'pending'};
     const list=await razorpay(s.mode,'/orders/'+s.provider_order_id+'/payments');
     const payment=list.items?.find(p=>p.status==='captured');
     return payment?capture(s,payment):{status:'pending'};
   }
   async function status(body){const s=await session(body);return s.status==='paid'?paidResult(s):reconcile(s);}
+  async function cancel(body){const s=await session(body);if(s.status==='paid')return paidResult(s);if(s.payment_method!=='payment_link')fail('This checkout cannot be cancelled here.',409);return links.cancel(s);}
   async function handoff(s){
     if(s.handoff_sent_at)return;
     const webhook=env('N8N_WEBHOOK_URL');if(!webhook)fail('Fulfilment is not configured.',503);
@@ -188,7 +212,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
   async function checkoutWork(id=null){
     const sessions=await rpc('store_claim_checkout_work',{p_session_id:id});
     await Promise.all(sessions.map(async s=>{
-      try{if(s.status==='ready')await reconcile(s);else await handoff(s);}
+      try{if(s.status!=='paid')await reconcile(s);else await handoff(s);}
       catch(error){await patch(s.id,{last_error:String(error.message||'Retry pending').slice(0,250)});}
     }));
     return {checked:sessions.length};
@@ -204,17 +228,31 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
     for(const mode of ['test','live']){const secret=env('RAZORPAY_'+mode.toUpperCase()+'_WEBHOOK_SECRET');if(secret&&same(await hmac(secret,raw),signature.toLowerCase()))modes.push(mode);}
     if(!modes.length)fail('Invalid signature.',401);
     let event;try{event=JSON.parse(raw);}catch{fail('Invalid event.');}
-    if(!['payment.captured','order.paid'].includes(event.event))return {ok:true,ignored:true};
+    if(!['payment.captured','order.paid','payment_link.paid'].includes(event.event))return {ok:true,ignored:true};
+    const link=event.payload?.payment_link?.entity;
+    if(link?.id&&/^plink_[A-Za-z0-9]+$/.test(link.id)){
+      let [s]=await db('/rest/v1/store_checkout_sessions?select=*&provider_payment_link_id=eq.'+link.id+'&limit=1');
+      if(!s&&uuid.test(link.notes?.website_session||'')) [s]=await db('/rest/v1/store_checkout_sessions?select=*&id=eq.'+link.notes.website_session+'&limit=1');
+      if(!s)return {ok:true,ignored:true};
+      if(!modes.includes(s.mode))fail('Invalid payment mode.',401);
+      if(s.status!=='paid')await reconcile(s);
+      background(work(s.id));return {ok:true};
+    }
     const p=event.payload?.payment?.entity,orderId=p?.order_id||event.payload?.order?.entity?.id;
     if(!/^order_[A-Za-z0-9]+$/.test(orderId||''))fail('Invalid event.');
-    const [s]=await db('/rest/v1/store_checkout_sessions?select=*&provider_order_id=eq.'+orderId+'&limit=1');
+    let [s]=await db('/rest/v1/store_checkout_sessions?select=*&provider_order_id=eq.'+orderId+'&limit=1');
+    // Payment-link order IDs are assigned at payment time. A signed webhook
+    // note is only a lookup hint; reconciliation fetches and verifies the link.
+    const sessionId=p?.notes?.website_session||event.payload?.order?.entity?.notes?.website_session;
+    if(!s&&uuid.test(sessionId||'')) [s]=await db('/rest/v1/store_checkout_sessions?select=*&id=eq.'+sessionId+'&limit=1');
     if(!s)return {ok:true,ignored:true};
     if(!modes.includes(s.mode))fail('Invalid payment mode.',401);
     if(s.status!=='paid'){
-      if(p?.id&&/^pay_[A-Za-z0-9]+$/.test(p.id))await capture(s,await razorpay(s.mode,'/payments/'+p.id));
+      if(s.payment_method==='payment_link')await reconcile(s);
+      else if(p?.id&&/^pay_[A-Za-z0-9]+$/.test(p.id))await capture(s,await razorpay(s.mode,'/payments/'+p.id));
       else await reconcile(s);
     }
     background(work(s.id));return {ok:true};
   }
-  return {config,create,verify,status,webhook,work,authorizeRecovery};
+  return {config,preview,create,verify,status,cancel,webhook,work,authorizeRecovery};
 }

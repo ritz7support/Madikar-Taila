@@ -107,13 +107,14 @@ export default {
       try { return json(await storeApi(env,{action:'checkout_config'})); }
       catch { return json({ready:false,shippingPaise:null}); }
     }
-    const actions={'/api/checkout/order':'checkout_create','/api/checkout/verify':'checkout_verify','/api/checkout/status':'checkout_status'};
+    const actions={'/api/checkout/order':'checkout_create','/api/checkout/quote':'checkout_quote','/api/checkout/cancel':'checkout_cancel','/api/checkout/verify':'checkout_verify','/api/checkout/status':'checkout_status'};
     if (request.method !== 'POST' || !actions[url.pathname]) return json({error:'Not found.'},404);
     if (request.headers.get('origin') !== url.origin) return json({error:'Cross-origin checkout is not allowed.'},403);
     try {
       const body=await readCheckout(request);
       const payload={sessionId:body.sessionId,token:body.token,action:actions[url.pathname]};
-      if(payload.action==='checkout_create') Object.assign(payload,{address:body.address,lines:body.lines,clientHash:await clientHash(request,env)});
+      if(payload.action==='checkout_create') Object.assign(payload,{address:body.address,lines:body.lines,expectedAmountPaise:body.expectedAmountPaise,clientHash:await clientHash(request,env)});
+      if(payload.action==='checkout_quote')payload.lines=body.lines;
       if(payload.action==='checkout_verify') Object.assign(payload,{orderId:body.orderId,paymentId:body.paymentId,signature:body.signature});
       return json(await storeApi(env,payload));
     } catch (error) {

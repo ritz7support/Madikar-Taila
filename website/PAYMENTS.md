@@ -1,4 +1,16 @@
-# Website checkout — updated 15 October 2026
+# Website checkout — updated 17 October 2026
+
+## 17 October: payment links, shipping and delivered messages
+
+This section supersedes the historical zero-shipping/embedded-checkout descriptions below for new orders. See `../docs/plans/PAYMENT_LINKS_SHIPPING_DELIVERY_2026-10-17.md` for rollout evidence and limitations.
+
+- New website checkout uses the same Razorpay Standard Payment Links API and UPI-only method configuration as WhatsApp. Provider SMS/email notifications and reminders are disabled. Return URLs are display hints only: the server fetches and matches the stored link, reference, payment, order, currency and exact captured amount before transactional finalization. Old Orders API sessions retain their original verification/recovery path. Shared payment mode and credentials are unchanged.
+- Shipping uses the selected variants' shipping_weight_grams in both channels. Boxes have product capacities/empty weights of 1,000/100 g, 4,000/336 g and 6,000/403 g. Individual packs stay intact; first-fit decreasing assigns packs to 6 kg loads, then selects the smallest box for each load. Product and box weights are summed across the consignment. At ₹40/kg, the next billed kilogram starts at 200 g over a whole kilogram, inclusive, minimum 1 kg: 1,199 g = ₹40; 1,200 g = ₹80. Quotes are saved with new orders; existing order amounts do not change. Missing weights or a single pack above 6 kg require store assistance. Mustard oil 1 L is owner-deferred until its weight is filled in the admin panel.
+- A server quote shows the total before creating a payment link; creation rejects a changed total. A checkout identity creates at most one link. Ambiguous creation is recovered by its unique reference rather than replaying POST. Pending links can be resumed or explicitly cancelled; the browser retains the bag/session until verified payment or a provider-confirmed unpaid terminal state. Closed-browser reconciliation retains the five-minute recovery job.
+- New link payments store both link and canonical order IDs. The bot Razorpay webhook filters all payment lookups to WhatsApp orders, preventing duplicate bot confirmations/handoffs for website links. The website's existing payment-confirmation queue and n8n flow remain responsible for website orders.
+- Admin **Delivered** uses the existing `completed` database value. Only `shipped → completed` queues `order_delivered`, language `en`, with named body parameter `order_number` containing the stored order reference. The buyer's order phone is used for both sources. No historical backfill. The new private queue retains leases, bounded retries and uncertain-delivery holds; accepted messages cannot be sent again.
+- Shipment saves return the durable order and notification states from one database RPC. Shipment and delivery messages run in the background. A failed save keeps the dialog open; successful saving does not wait for Meta.
+- Current changes narrowly include `madikar-store`, `whatsapp-webhook` (weight-based shipping) and `razorpay-webhook` (website-link exclusion). This is the owner-authorized exception to the older website-only boundary below. Flow handlers, shared order-handoff code, customer defaults, secrets, catalog sync and existing payment amounts stay unchanged.
 
 ## Subsequent WhatsApp bookkeeping correction — 15 October
 

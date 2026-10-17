@@ -1,5 +1,6 @@
 import { createCheckoutService } from './checkout.ts';
 import { createShipmentNotificationService } from './shipment.ts';
+import { createDeliveryNotificationService } from './delivery.ts';
 import { createCatalogAvailabilityService } from './availability.ts';
 // Deployed as the madikar-store Supabase Edge Function.
 // The existing Sites Worker and Vercel each hold a separate private signing key.
@@ -212,15 +213,22 @@ async function adminAction(body) {
         fields.estimated_delivery_days = days;
       }
     }
-    const response = await database('/rest/v1/orders?id=eq.' + id + '&status=neq.pending_payment&fulfillment_status=eq.' + previous,{
-      method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(fields)
+    const response = await database('/rest/v1/rpc/store_update_fulfillment',{
+      method:'POST',body:JSON.stringify({p_order_id:id,p_previous:previous,p_stage:stage,
+        p_tracking_id:fields.tracking_id??null,p_delivery_days:fields.estimated_delivery_days??null,
+        p_set_delivery_days:Object.hasOwn(fields,'estimated_delivery_days')})
     });
-    const order = response.payload?.[0];
+    const order = response.error?null:response.payload;
     if (!order) throw Object.assign(new Error('Order changed or is awaiting payment. Refresh orders and try again.'),{status:409});
-    if (stage === 'shipped' && order.estimated_delivery_days) scheduleShipmentNotification(order.id);
-    return {id:order.id,fulfillmentStatus:order.fulfillment_status,trackingId:order.tracking_id || null,
-      estimatedDeliveryDays:order.estimated_delivery_days ?? null,
-      ...(stage==='shipped'?{shipmentNotification:await shipmentService.view(order.id).catch(()=>null)}:{})};
+    if (stage === 'shipped' && order.estimatedDeliveryDays) scheduleShipmentNotification(order.id);
+    if (previous === 'shipped' && stage === 'completed') scheduleDeliveryNotification(order.id);
+    return order;
+  }
+  if (body.action === 'admin_delivery_notification' || body.action === 'admin_retry_delivery_notification') {
+    const id=adminId(body.id);
+    if (!id) throw Object.assign(new Error('Invalid order'),{status:400});
+    if (body.action === 'admin_retry_delivery_notification') {await deliveryService.retry(id);scheduleDeliveryNotification(id);}
+    return {deliveryNotification:await deliveryService.view(id)};
   }
   if (body.action === 'admin_shipment_notification' || body.action === 'admin_retry_shipment_notification') {
     const id=adminId(body.id);
@@ -309,6 +317,7 @@ async function adminAction(body) {
 
 const checkoutService = createCheckoutService({database,env:key=>Deno.env.get(key),background:promise=>EdgeRuntime.waitUntil(promise)});
 const shipmentService = createShipmentNotificationService({database,env:key=>Deno.env.get(key)});
+const deliveryService = createDeliveryNotificationService({database,env:key=>Deno.env.get(key)});
 const catalogAvailabilityService = createCatalogAvailabilityService({database,env:key=>Deno.env.get(key)});
 function scheduleCatalogAvailability(productId){
   EdgeRuntime.waitUntil(catalogAvailabilityService.work(productId).catch(()=>console.error('Catalog availability will be retried by recovery.')));
@@ -316,10 +325,19 @@ function scheduleCatalogAvailability(productId){
 function scheduleShipmentNotification(orderId){
   EdgeRuntime.waitUntil(shipmentService.work(orderId).catch(()=>console.error('Shipment notification will be reconciled by recovery.')));
 }
+function scheduleDeliveryNotification(orderId){
+  EdgeRuntime.waitUntil(deliveryService.work(orderId).catch(()=>console.error('Delivery notification will be reconciled by recovery.')));
+}
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return result({error:'Method not allowed'},405);
   const path = new URL(request.url).pathname;
+  if (path.endsWith('/delivery-recovery')) {
+    try {
+      if (!await checkoutService.authorizeRecovery(request.headers.get('x-checkout-recovery'))) return result({error:'Unauthorized'},401);
+      return result(await deliveryService.work());
+    } catch { return result({error:'Delivery recovery temporarily unavailable'},503); }
+  }
   if (path.endsWith('/catalog-availability-recovery')) {
     try {
       if (!await checkoutService.authorizeRecovery(request.headers.get('x-checkout-recovery'))) return result({error:'Unauthorized'},401);
@@ -360,9 +378,11 @@ Deno.serve(async (request) => {
   if (body.action !== 'admin_upload_image' && raw.length > 20000) return result({error:'Request too large'},413);
   try {
     if (body.action === 'checkout_config') return result(await checkoutService.config());
+    if (body.action === 'checkout_quote') return result(await checkoutService.preview(body));
     if (body.action === 'checkout_create') return result(await checkoutService.create(body));
     if (body.action === 'checkout_verify') return result(await checkoutService.verify(body));
     if (body.action === 'checkout_status') return result(await checkoutService.status(body));
+    if (body.action === 'checkout_cancel') return result(await checkoutService.cancel(body));
     if (typeof body.action === 'string' && body.action.startsWith('admin_')) {
       const admin=await adminIdentity(body.adminToken);
       if (!admin) return result({error:'Owner access required'},403);

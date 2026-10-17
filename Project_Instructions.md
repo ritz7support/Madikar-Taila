@@ -1,6 +1,10 @@
 # Madikar Taila — Project Instructions
 
-Last updated: 15 October 2026.
+Last updated: 17 October 2026.
+
+## Current payment/shipping checkpoint — 17 October
+
+Start with PROJECT_HANDOFF.md and docs/plans/PAYMENT_LINKS_SHIPPING_DELIVERY_2026-10-17.md. Latest branch codex/payment-links-shipping-delivery extends f6a5e04. Site 35, madikar-store v19, whatsapp-webhook v96 and razorpay-webhook v35 are published with complete source parity. New website payments use Standard Payment Links; both channels charge owner-confirmed weight/box shipping. Admin Shipped → Delivered queues order_delivered (en, order_number); shipment saving returns before Meta sending. All 98 tests and rollback/browser/live-read checks pass. Existing catalog and historical payment/order data remain unchanged. Mustard 1 L weight is still owner-deferred; actual new-flow payments/messages were not initiated. Current full sync remains prohibited. These narrowly authorized changes supersede older zero-shipping and website-only statements below; do not extend their scope to unrelated bot handlers, keys, defaults or historical data.
 
 ## Current catalog and payment-ID checkpoint — 15 October
 

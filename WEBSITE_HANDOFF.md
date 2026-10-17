@@ -1,6 +1,10 @@
-# Madikar Taila website handoff — 15 October 2026
+# Madikar Taila website handoff — 17 October 2026
 
-## Latest publication
+## Current publication — 17 October
+
+Continue from codex/payment-links-shipping-delivery (base f6a5e04). Same public Site, version 35, Sites source a18d8236ea143242d704fd7e45b9395ac3b5bc93, deployment appgdep_6ad35e594508819192b9eebb4de5090b, at https://madikartaila.com. Read docs/plans/PAYMENT_LINKS_SHIPPING_DELIVERY_2026-10-17.md and PROJECT_HANDOFF.md first. Website checkout now uses Standard Payment Links with server-quoted weight/box shipping; existing sessions retain compatibility. Admin Delivered sends order_delivered through a private queue; shipment Save does not wait for Meta. Supabase madikar-store v19, whatsapp-webhook v96 and razorpay-webhook v35 match local; the other functions remain unchanged. Settings activate payment_link and courier-2026-10-17 without changing live mode or keys. 98 tests, SQL fixtures, all-pack quote comparisons and browser/live read-only checks pass. Mustard 1 L still needs its weight. No real payment/message was performed. Older sections below describe historical checkpoints where superseded.
+
+## Previous publication — 15 October
 
 Continue from codex/store-speed-stock-sync (base b3d894a), preserving all earlier admin/shipment/variant work. Site 34 is published on the same public project at https://madikartaila.com, from Sites commit 3346982dbe2d15662f9cd3d25ec8be81a67dc1f4; deployment appgdep_6ad0a7c4f9208191838f6cc33084dc8b. The website backend is madikar-store v17 with index, checkout, confirmation, shipment and availability modules; all five match local. Other bot functions are unchanged. Do not deploy Site 32: its default-cache assumption was corrected in Site 33 with named-cache/fallback coverage.
 

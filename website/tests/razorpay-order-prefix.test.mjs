@@ -7,7 +7,7 @@ import vm from 'node:vm';
 
 const source=stripTypeScriptTypes(readFileSync(new URL('../../supabase/functions/razorpay-webhook/index.ts',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,''));
 function fixture(mode='live'){
-  const state={calls:[],rpc:[],messages:[],handoffs:[],pending:[],payment:{id:7,order_id:9,status:'pending',amount:1,provider_payment_link_reference_id:'ORD-fixture',provider_payment_link_id:'plink_fixture'},order:{id:9,reference_id:'ORD-fixture',total:1,status:'pending_payment',whatsapp_user_id:'919000000001'}};
+  const state={calls:[],rpc:[],messages:[],handoffs:[],pending:[],payment:{id:7,order_id:9,status:'pending',amount:1,provider_payment_link_reference_id:'ORD-fixture',provider_payment_link_id:'plink_fixture'},order:{source:'whatsapp',id:9,reference_id:'ORD-fixture',total:1,status:'pending_payment',whatsapp_user_id:'919000000001'}};
   const env={SUPABASE_URL:'https://db.example.test',SUPABASE_SERVICE_ROLE_KEY:'fixture',RAZORPAY_MODE:mode,RAZORPAY_LIVE_WEBHOOK_SECRET:'live-fixture',RAZORPAY_TEST_WEBHOOK_SECRET:'test-fixture',WHATSAPP_ACCESS_TOKEN:'fixture'};
   const sandbox={crypto:webcrypto,TextEncoder,Response,Request,URL,Date,setTimeout,console:{log(){},warn(){},error(){}},
     Deno:{env:{get:k=>env[k]},serve:handler=>{state.handler=handler;}},EdgeRuntime:{waitUntil:p=>state.pending.push(p)},
@@ -17,6 +17,7 @@ function fixture(mode='live'){
       if(u.hostname==='graph.facebook.com'){state.messages.push(body);return Response.json({messages:[{id:'wamid.fixture'}]});}
       assert.equal(u.hostname,'db.example.test');
       if(table==='payments'){
+        if(method==='GET'){assert.equal(u.searchParams.get('orders.source'),'eq.whatsapp');assert.match(u.searchParams.get('select'),/orders!inner\(source\)/);if(state.order.source!=='whatsapp')return Response.json([]);}
         if(method==='PATCH'){Object.assign(state.payment,body);return new Response(null,{status:204});}
         const event=u.searchParams.get('provider_event_id');
         return Response.json(event?(state.payment.provider_event_id===event.slice(3)?[state.payment]:[]):[state.payment]);
@@ -77,4 +78,11 @@ test('expiry and cancellation retain their existing status-only behavior',async(
     assert.equal(f.state.payment.status,terminal);assert.equal(f.state.order.status,'pending_payment');
     assert.equal(f.state.rpc.length,0);assert.equal(f.state.messages.length,0);assert.equal(f.state.handoffs.length,0);
   }
+});
+
+test('website link events cannot send bot confirmations or trigger bot handoff',async()=>{
+ for(const type of ['payment_link.paid','payment_link.expired','payment_link.cancelled']){
+  const f=fixture();f.state.order.source='store';
+  assert.equal((await f.send(event({event:type}))).status,200);assert.equal(f.state.rpc.length,0);assert.equal(f.state.messages.length,0);assert.equal(f.state.handoffs.length,0);
+ }
 });
