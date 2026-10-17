@@ -1,5 +1,11 @@
 # Website checkout — updated 17 October 2026
 
+## Phase-one closure: delivery transitions and historical orders
+
+The owner has filled Mustard oil 1 L with 910 g. Final inspection found no missing variant weights, and a read-only live quote correctly returns ₹40 shipping for its 1,010 g packed weight. Earlier missing-weight notes below are historical.
+
+The follow-up fix in migration 20261017120519_delivered_notification_transitions queues a delivery message whenever a paid order newly changes to Delivered, including Processing → Delivered. It retains the existing queue, named order_number parameter and duplicate/uncertain-send protections. No historical backfill is performed. An already-delivered order without a notification shows an explicit **Send delivery message** admin action; the owner can use it without changing the order's status. Orders 171 and 170 had no notification queued: 171 became Delivered before the feature's deployment; 170 had no shipment stage recorded. No message was sent during this fix. See ../docs/plans/PHASE_ONE_CLOSE_2026-10-17.md for current evidence and publication.
+
 ## 17 October: payment links, shipping and delivered messages
 
 This section supersedes the historical zero-shipping/embedded-checkout descriptions below for new orders. See `../docs/plans/PAYMENT_LINKS_SHIPPING_DELIVERY_2026-10-17.md` for rollout evidence and limitations.

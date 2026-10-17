@@ -2,6 +2,10 @@
 
 Last updated: 17 October 2026.
 
+## Phase-one main branch checkpoint
+
+All completed branches are consolidated into main, including the latest codex/phase-one-final-polish fixes from 8b320b5. Start future work from current main; older statements about main being behind are historical. Read PROJECT_HANDOFF.md and docs/plans/PHASE_ONE_CLOSE_2026-10-17.md. Site 36 and madikar-store v20 are current; the other five function versions/source remain unchanged. Orders preloads securely, product detail pages show full images at smaller scale, and new Delivered transitions queue messages even when Shipped was skipped. Historical orders require the explicit Send delivery message action; no automatic backfill or customer send was made. 101 tests, rollback fixtures and browser/live-read checks passed. The Claude review prompt requests a read-only independent audit, not implementation.
+
 ## Current payment/shipping checkpoint — 17 October
 
 Start with PROJECT_HANDOFF.md and docs/plans/PAYMENT_LINKS_SHIPPING_DELIVERY_2026-10-17.md. Latest branch codex/payment-links-shipping-delivery extends f6a5e04. Site 35, madikar-store v19, whatsapp-webhook v96 and razorpay-webhook v35 are published with complete source parity. New website payments use Standard Payment Links; both channels charge owner-confirmed weight/box shipping. Admin Shipped → Delivered queues order_delivered (en, order_number); shipment saving returns before Meta sending. All 98 tests and rollback/browser/live-read checks pass. Existing catalog and historical payment/order data remain unchanged. Mustard 1 L weight is still owner-deferred; actual new-flow payments/messages were not initiated. Current full sync remains prohibited. These narrowly authorized changes supersede older zero-shipping and website-only statements below; do not extend their scope to unrelated bot handlers, keys, defaults or historical data.

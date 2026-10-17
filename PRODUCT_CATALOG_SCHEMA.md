@@ -1,5 +1,7 @@
 # Product catalog schema — current checkpoint 17 October 2026
 
+Final phase-one inspection: the owner entered 910 g for Mustard oil 1 L (variant 18). All 94 variants now have weights; its live shipping quote returns 1,010 g with the 100 g box, charged at ₹40. No weight was edited by the agent. The missing-weight statements below record the earlier rollout and are superseded by this check. See docs/plans/PHASE_ONE_CLOSE_2026-10-17.md; all completed work is consolidated on main.
+
 ## Shipping weights are active — 17 October 2026
 
 Both checkout paths now use exact ProductVariant.shipping_weight_grams and retailer_id for new courier quotes, preserving all existing catalog values. Fresh inspection: 94 variants, 93 usable weights; Mustard oil 1 L (variant 18) remains NULL by owner choice and cannot create a new shipping quote until filled in admin. New orders store a shipping_quote snapshot with selected variant/retailer IDs, weights, quantities, boxes and billed kilograms. Parent IDs, legacy lookup rows, prices, availability and historical orders are unchanged. Read docs/plans/PAYMENT_LINKS_SHIPPING_DELIVERY_2026-10-17.md for the ₹40/kg rule and multi-box assumptions. Current full catalog sync remains deferred and unsafe to invoke.

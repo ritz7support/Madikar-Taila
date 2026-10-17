@@ -17,7 +17,7 @@ function harness(){
     fulfillment_status:'processing',created_at:'2026-10-07T00:00:00Z',total:175,subtotal:175,shipping:0,
     payments:index===0?[]:[{status:'paid',provider_payment_id:'pay_fixture'}]}));
   node('#order-source').value='all';
-  const context=vm.createContext({document:{querySelector:node},URL,URLSearchParams,Response,
+  const context=vm.createContext({document:{querySelector:node},URL,URLSearchParams,Response,sessionStorage:{setItem(){},removeItem(){}},
     fetch:async(_url,options)=>{
       const body=JSON.parse(options.body);calls.push(body);
       if(body.action==='admin_update_fulfillment')return Response.json({fulfillmentStatus:body.status,trackingId:body.trackingId || null,estimatedDeliveryDays:body.estimatedDeliveryDays ?? null});
@@ -42,6 +42,38 @@ test('orders replace each 20-row page and filter at the server',async()=>{
   await vm.runInContext('loadOrders(0)',h.context);
   assert.equal(h.node('#orders-list').innerHTML.match(/class="order-card"/g).length,8);
   assert.deepEqual(h.calls.filter(c=>c.action==='admin_orders').map(c=>[c.page,c.source]),[[0,'all'],[1,'all'],[0,'store']]);
+});
+
+test('orders preload during sign-in, reuse a fresh page, and refresh on demand or expiry',async()=>{
+  const h=harness();await vm.runInContext('enterDashboard()',h.context);
+  await vm.runInContext('Promise.resolve()',h.context);
+  assert.deepEqual(h.calls.slice(0,3).map(c=>c.action),['admin_me','admin_orders','admin_catalog']);
+  await vm.runInContext('loadOrders(0)',h.context);
+  assert.equal(h.calls.filter(c=>c.action==='admin_orders').length,1);
+  await vm.runInContext('loadOrders(0,{force:true})',h.context);
+  assert.equal(h.calls.filter(c=>c.action==='admin_orders').length,2);
+  await vm.runInContext('state.ordersLoadedAt=0;loadOrders(0)',h.context);
+  assert.equal(h.calls.filter(c=>c.action==='admin_orders').length,3);
+});
+
+test('duplicate clicks share the pending load; sign-out discards the response and customer rows',async()=>{
+  const h=harness();let release;
+  h.context.fetch=()=>new Promise(resolve=>{release=resolve});
+  const pending=vm.runInContext('loadOrders(0)',h.context);
+  await vm.runInContext('loadOrders(0)',h.context);
+  vm.runInContext('clearToken()',h.context);
+  release(Response.json({orders:[{id:1,reference_id:'PRIVATE'}],hasMore:false}));
+  await pending;
+  assert.equal(vm.runInContext('state.orders.length',h.context),0);
+  assert.equal(h.node('#orders-list').innerHTML,'');
+});
+
+test('an older delivered order offers an explicit send, while pending payment and accepted jobs do not',()=>{
+  const h=harness();
+  const render=order=>vm.runInContext('deliveryMessage('+JSON.stringify(order)+')',h.context);
+  assert.match(render({id:170,fulfillment_status:'completed',status:'processing'}),/Send delivery message/);
+  assert.equal(render({id:170,fulfillment_status:'completed',status:'pending_payment'}),'');
+  assert.doesNotMatch(render({id:170,fulfillment_status:'completed',status:'processing',delivery_notification:{status:'sent',attempts:1}}),/data-retry-delivery/);
 });
 
 test('source badges differ and paid orders expose four delivery stages',async()=>{

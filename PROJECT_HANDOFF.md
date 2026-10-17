@@ -1,6 +1,13 @@
 # Madikar Taila — project analysis starting point
 
-Updated 17 October 2026. Latest work: codex/payment-links-shipping-delivery, continuing from f6a5e04 and preserving the admin/shipment, variant-ID, order-prefix, speed and stock work. Last fetched origin/main was older at 4769c08. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Inspect Git and preserve the latest work; do not reset to older main. Older branches remain as history.
+Updated 17 October 2026. Completed phase-one work, including codex/phase-one-final-polish from 8b320b5, is consolidated and pushed to main. All earlier local/remote branch tips are ancestors; older branches remain as history. Future work should branch from current main after checking Git status/history. Repository: https://github.com/samskruthrml21-eng/Madikar-Taila. Canonical checkout: D:/cursor projects/Madikar taila. Do not reset to the older main checkpoints mentioned in dated sections below.
+
+## Phase-one closure — latest checkpoint, 17 October
+
+- Read docs/plans/PHASE_ONE_CLOSE_2026-10-17.md. Admin Orders now preloads after authentication, shares in-flight reads, briefly reuses current-page data, refreshes explicitly/on expiry and discards late responses after sign-out. The database query was about 34 ms; request latency was the larger delay. Browser tests show a cached tab click at 49 ms with a simulated 700 ms backend.
+- Product pages use smaller 32–44 px headings, 15 px descriptions, a narrower layout and a maximum 500 px desktop image frame. All detail images use contain, showing the full source image. Six desktop/mobile widths passed visual/layout checks.
+- Missing delivery notifications: order 171 was completed before the feature was deployed; order 170 had no shipping or delivery queue record. New changes to Delivered now queue even when Shipped was skipped. Already-delivered orders with no notification expose Send delivery message; no historical backfill or send was initiated. Migration 20261017120519_delivered_notification_transitions is applied; only madikar-store v20 was deployed, with full source parity. Other five functions, payment/shipping behavior and data/security are preserved.
+- Same public Site 36, source 23fb348e6ef0fd7bc7f1fec59e4d36f365d20923, deployment appgdep_6ad36998fca48191aa9bc520fa339f9b succeeded. 101 automated tests, three rollback SQL suites, mocked browser checks and live read-only asset/auth/config checks passed. Evidence: outputs/phase-one-close-20261017/. Claude review prompt: docs/plans/CLAUDE_PHASE_ONE_REVIEW_PROMPT.md. Remaining live-payment/message/packing limitations are recorded in the closure report. The owner filled Mustard 1 L with 910 g; there are now zero missing variant weights, and its live quote correctly charges ₹40 for 1,010 g packed weight.
 
 ## 17 October payment links, shipping and delivered messages — current checkpoint
 

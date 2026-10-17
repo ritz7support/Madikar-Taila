@@ -185,6 +185,10 @@ test('Supabase function rejects unsigned requests and accepts signed catalog/adm
   assert.equal((await send({action:'admin_update_fulfillment',adminToken:'invalid',id:2,status:'completed',previousStatus:'shipped'})).status,403);
   assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:2,status:'completed',previousStatus:'shipped'})).status,200);
   assert.deepEqual(deliveryWork,[2]);
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:3,status:'completed',previousStatus:'processing'})).status,200);
+  assert.deepEqual(deliveryWork,[2,3]);
+  assert.equal((await send({action:'admin_update_fulfillment',adminToken,id:3,status:'completed',previousStatus:'completed'})).status,200);
+  assert.deepEqual(deliveryWork,[2,3],'saving Delivered again must not schedule another send');
   assert.equal((await handler(new Request(endpoint+'/delivery-recovery',{method:'POST'}))).status,401);
   const legacy=await send(pack);
   assert.equal((await legacy.json()).variant.shipping_weight_grams,550,'old admin clients must preserve saved weights');

@@ -1,14 +1,16 @@
 const $ = selector => document.querySelector(selector);
 const escapeHtml = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const money = value => '₹' + Number(value || 0).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2});
-const state = {config:null,token:null,products:[],orders:[],ordersPage:0,hasMore:false,orderLoading:false,ordersLoaded:false,shipment:null,selectedId:null,editing:null};
+const state = {config:null,token:null,products:[],orders:[],ordersPage:0,ordersSource:null,ordersLoadedAt:0,hasMore:false,orderLoading:false,ordersLoaded:false,shipment:null,selectedId:null,editing:null};
+let ordersRequest=0;
 const accessStorageKey = 'madikar-admin-access';
 const validToken = value => /^[A-Za-z0-9_-]{43}$/.test(value || '');
 const setStatus = (message,tone='note',target='#dashboard-status') => {
   const node=$(target); node.textContent=message; node.dataset.tone=tone;
 };
-function saveToken(token){state.token=token;sessionStorage.setItem(accessStorageKey,token)}
-function clearToken(){state.token=null;sessionStorage.removeItem(accessStorageKey)}
+function resetOrders(){ordersRequest++;Object.assign(state,{orders:[],ordersPage:0,ordersSource:null,ordersLoadedAt:0,hasMore:false,orderLoading:false,ordersLoaded:false});$('#orders-list').innerHTML='';}
+function saveToken(token){resetOrders();state.token=token;sessionStorage.setItem(accessStorageKey,token)}
+function clearToken(){resetOrders();state.token=null;sessionStorage.removeItem(accessStorageKey)}
 async function adminApi(action,body={}){
   if(!validToken(state.token))throw new Error('Enter a valid team access code.');
   const response=await fetch('/api/admin',{
@@ -31,6 +33,9 @@ function showLogin(message=''){
 async function enterDashboard(){
   const identity=await adminApi('admin_me');
   showDashboard(identity.label);
+  // Start the private first page while the product editor loads. A tab click
+  // shares this request; data stays in this signed-in page's memory only.
+  void loadOrders(0,{quiet:true});
   await loadProducts();
 }
 async function loadProducts(selectedId=state.selectedId){
@@ -237,7 +242,7 @@ function shipmentMessage(order){
 }
 function deliveryMessage(order){
   const note=order.delivery_notification;
-  if(!note)return '';
+  if(!note)return order.fulfillment_status==='completed'&&order.status!=='pending_payment'?`<p>No delivery message has been queued for this order.</p><button type="button" data-retry-delivery="${order.id}">Send delivery message</button>`:'';
   const status=note.status;
   const messages={pending:'Delivery message queued.',sending:'Sending delivery message…',sent:'Delivery message accepted by WhatsApp.',
     failed:[132001,132015,132016].includes(note.error_code)?'The WhatsApp template is not ready. Retry after approval.':'The delivery message could not be sent.',
@@ -273,16 +278,22 @@ function renderOrders(){
   $('#order-source').disabled=state.orderLoading;
   $('#refresh-orders').disabled=state.orderLoading;
 }
-async function loadOrders(page=0){
+async function loadOrders(page=0,{force=false,quiet=false}={}){
   if(state.orderLoading)return;
+  const source=$('#order-source').value;
+  const samePage=state.ordersLoaded&&state.ordersPage===page&&state.ordersSource===source;
+  if(!force&&samePage&&Date.now()-state.ordersLoadedAt<30000){renderOrders();return;}
+  const request=++ordersRequest,token=state.token;
+  if(!samePage)state.orders=[];
   state.orderLoading=true;
   renderOrders();
   try{
-    const data=await adminApi('admin_orders',{page,source:$('#order-source').value});
-    state.orders=data.orders || [];state.ordersPage=page;state.hasMore=Boolean(data.hasMore);state.ordersLoaded=true;
-    setStatus(`${state.orders.length} orders on page ${page+1}.`,'success');
-  }catch(error){setStatus(error.message,'error')}
-  finally{state.orderLoading=false;renderOrders()}
+    const data=await adminApi('admin_orders',{page,source});
+    if(request!==ordersRequest||token!==state.token)return;
+    state.orders=data.orders || [];state.ordersPage=page;state.ordersSource=source;state.hasMore=Boolean(data.hasMore);state.ordersLoaded=true;state.ordersLoadedAt=Date.now();
+    if(!quiet)setStatus(`${state.orders.length} orders on page ${page+1}.`,'success');
+  }catch(error){if(request===ordersRequest&&!quiet)setStatus(error.message,'error')}
+  finally{if(request===ordersRequest){state.orderLoading=false;renderOrders()}}
 }
 
 $('#access-form').addEventListener('submit',async event=>{
@@ -308,7 +319,7 @@ $('.tabs').addEventListener('click',event=>{
   for(const item of document.querySelectorAll('[data-tab]')){item.classList.toggle('selected',item===button);item.removeAttribute('aria-current')}
   button.setAttribute('aria-current','page');
   $('#products-panel').hidden=tab!=='products';$('#orders-panel').hidden=tab!=='orders';
-  if(tab==='orders'&&!state.ordersLoaded)loadOrders(0);
+  if(tab==='orders')loadOrders(state.ordersPage);
 });
 $('#product-search').addEventListener('input',renderProductList);
 $('#product-list').addEventListener('click',event=>{
@@ -330,7 +341,7 @@ $('#product-editor').addEventListener('click',event=>{
   if(target.dataset.saveVariant)saveVariant(target.closest('tr'));
   if(target.id==='add-pack')saveVariant(null,true);
 });
-$('#refresh-orders').addEventListener('click',()=>loadOrders(state.ordersPage));
+$('#refresh-orders').addEventListener('click',()=>loadOrders(state.ordersPage,{force:true}));
 $('#previous-orders').addEventListener('click',()=>loadOrders(state.ordersPage-1));
 $('#next-orders').addEventListener('click',()=>loadOrders(state.ordersPage+1));
 $('#order-source').addEventListener('change',()=>loadOrders(0));
@@ -344,7 +355,7 @@ $('#orders-list').addEventListener('click',event=>{
     const order=state.orders.find(o=>String(o.id)===id);if(!order)return;
     deliveryButton.disabled=true;
     adminApi(deliveryButton.dataset.retryDelivery?'admin_retry_delivery_notification':'admin_delivery_notification',{id:order.id})
-      .then(data=>{order.delivery_notification=data.deliveryNotification;renderShipmentMessage(order)})
+      .then(data=>{state.ordersLoadedAt=0;order.delivery_notification=data.deliveryNotification;renderShipmentMessage(order)})
       .catch(error=>{setStatus(error.message,'error');deliveryButton.disabled=false});
     return;
   }
@@ -354,7 +365,7 @@ $('#orders-list').addEventListener('click',event=>{
     const order=state.orders.find(o=>String(o.id)===id);if(!order)return;
     button.disabled=true;
     adminApi(button.dataset.retryShipment?'admin_retry_shipment_notification':'admin_shipment_notification',{id:order.id})
-      .then(data=>{order.shipment_notification=data.shipmentNotification;renderShipmentMessage(order)})
+      .then(data=>{state.ordersLoadedAt=0;order.shipment_notification=data.shipmentNotification;renderShipmentMessage(order)})
       .catch(error=>{setStatus(error.message,'error');button.disabled=false});
   }
 });
@@ -371,6 +382,7 @@ async function updateOrderStage(order,select,stage,trackingId,estimatedDeliveryD
   select.disabled=true;
   try{
     const data=await adminApi('admin_update_fulfillment',{id:order.id,status:stage,previousStatus:previous,...(stage==='shipped'?{trackingId,estimatedDeliveryDays}:{})});
+    state.ordersLoadedAt=0;
     order.fulfillment_status=data.fulfillmentStatus;
     order.tracking_id=data.trackingId ?? order.tracking_id;
     if(Object.hasOwn(data,'estimatedDeliveryDays'))order.estimated_delivery_days=data.estimatedDeliveryDays;

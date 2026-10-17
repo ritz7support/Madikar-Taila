@@ -45,9 +45,16 @@ begin
   fixture:=(result->'order'->>'id')::bigint;
   if (result->'order'->>'shipping')::numeric<>40 or result->'order'->'shipping_quote'->>'packedGrams'<>'1100' then raise exception 'Bot shipping snapshot missing';end if;
   update public.orders set status='processing' where id=fixture;
-  -- Processing -> Completed is not the requested shipment-delivery event.
+  -- A direct Delivered transition must queue too, even when Shipped was skipped.
   perform public.store_update_fulfillment(fixture,'processing','completed');
-  if exists(select 1 from public.store_delivery_notifications where order_id=fixture) then raise exception 'Premature delivery message';end if;
+  if not exists(select 1 from public.store_delivery_notifications where order_id=fixture and status='pending') then raise exception 'Direct delivery message missing';end if;
+  -- Model a historical delivered fixture with no outbox row. The admin action
+  -- creates one explicitly, without changing the historical order itself.
+  delete from public.store_delivery_notifications where order_id=fixture;
+  perform public.store_retry_delivery_notification(fixture);
+  if not exists(select 1 from public.store_delivery_notifications where order_id=fixture and status='pending') then raise exception 'Explicit delivery message missing';end if;
+  begin perform public.store_retry_delivery_notification(fixture);raise exception 'Duplicate explicit send';
+  exception when raise_exception then if sqlerrm<>'Notification cannot be retried safely or retry limit reached' then raise;end if;end;
   perform public.store_update_fulfillment(fixture,'completed','processing');
   result:=public.store_update_fulfillment(fixture,'processing','shipped','TRACK-FIXTURE',5,true);
   if result->'shipmentNotification'->>'status'<>'pending' then raise exception 'Atomic shipment queue state missing';end if;

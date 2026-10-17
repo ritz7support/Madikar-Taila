@@ -221,7 +221,7 @@ async function adminAction(body) {
     const order = response.error?null:response.payload;
     if (!order) throw Object.assign(new Error('Order changed or is awaiting payment. Refresh orders and try again.'),{status:409});
     if (stage === 'shipped' && order.estimatedDeliveryDays) scheduleShipmentNotification(order.id);
-    if (previous === 'shipped' && stage === 'completed') scheduleDeliveryNotification(order.id);
+    if (previous !== 'completed' && stage === 'completed') scheduleDeliveryNotification(order.id);
     return order;
   }
   if (body.action === 'admin_delivery_notification' || body.action === 'admin_retry_delivery_notification') {

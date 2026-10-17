@@ -1,14 +1,14 @@
 # Madikar Taila website source
 
-Canonical source for Site appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com. Sites is a publishing mirror; preserve its project/audience. See ../PROJECT_HANDOFF.md for the current deployment version and source commit. The 15 October work continues on codex/store-speed-stock-sync from b3d894a, preserving the admin, shipment and variant-ID work; do not reset to the older main branch.
+Canonical source for Site appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com. Sites is a publishing mirror; preserve its project/audience. Phase-one work is consolidated on main. Site 36 / madikar-store v20 are current; read ../PROJECT_HANDOFF.md and ../docs/plans/PHASE_ONE_CLOSE_2026-10-17.md for source provenance and verification. The Orders tab preloads after sign-in, detail pages show complete images at smaller scale, and Delivered messages include direct transitions plus an explicit action for historical orders.
 
-Read ../PROJECT_HANDOFF.md, ../docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. All 94 current variants have verified retailer IDs. The website prefers variant IDs for new quotes, with parent fallback; whatsapp-webhook v95 resolves exact packs. Prices, historical items, zero shipping, UPI-only configuration and existing n8n/payment/shipment messages are preserved. The refreshed 94-item CSV and ₹1 checklist are in ../docs/catalog/. Its image links now use Supabase; no CSV was uploaded to Meta. Do not replay backfill, insert superseded hidden rows or invoke current full sync; sync redesign remains separate.
+Read ../PROJECT_HANDOFF.md, ../docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. All 94 current variants have verified retailer IDs. Website and WhatsApp resolve exact packs. New website payments use Standard Payment Links; both channels charge variant-weight/box shipping at the owner's confirmed rate. Prices, historical items, UPI-only options and existing n8n/payment flows are preserved. The refreshed 94-item CSV and ₹1 checklist are in ../docs/catalog/. Its image links use Supabase; no CSV was uploaded to Meta. Do not replay backfill, insert superseded hidden rows or invoke current full sync; sync redesign remains separate.
 
 ## Navigation, payment confirmation and stock
 
 Home/product navigation reuses the loaded catalog and bag, including All products and confirmation dismissal. Other static pages use a deployment-versioned edge cache; API responses remain uncached. Product photos have explicit dimensions, asynchronous decoding and a Supabase preconnect. Copy product link copies the current product URL.
 
-Payment verification reads the provider payment and order concurrently, retaining all checks and transactional finalization. The page immediately displays confirmation progress after the provider callback and polls the saved session if necessary. Only a server-confirmed paid session displays success. Closing the progress view retains the session and prevents a second payment attempt.
+Payment verification checks the stored link, captured payment and corresponding order before transactional finalization. Legacy Orders API sessions keep their verification path. The page displays confirmation progress on return and polls the saved session if necessary. Only a server-confirmed paid session displays success. Pending links can be resumed or explicitly cancelled after provider verification.
 
 Admin pack Availability uses In stock / Out of stock, with buttons to change all packs of a product. There is no numeric stock input; omitted quantities preserve existing data. Website checkout and fresh catalog reads reject unavailable packs. Open customer tabs refresh on focus; adding after 30 seconds refreshes first. Existing paid orders remain unchanged.
 
@@ -19,7 +19,7 @@ Stock changes queue an availability-only update to the exact retailer ID in its 
 - dist/client/ is editable source, including storefront, checkout, policy/admin pages, CSS and assets.
 - server/worker-template.js builds into dist/server/index.js. Run npm run build here.
 - Run npm test here for all current frontend, Worker, backend auth/catalog, checkout and confirmation tests. They use mocks; no customer messages or charges.
-- ../supabase/functions/madikar-store/{index,checkout,confirmation,shipment,availability}.ts is the canonical backend source.
+- ../supabase/functions/madikar-store/ is the canonical backend source, with checkout, payment-links, confirmation, shipment, delivery and availability modules. Courier rules are in ../supabase/functions/_shared/shipping.ts.
 - db/ and server/supabase-store-function.js are historical references. Do not apply/deploy them over live. Current migrations belong in ../supabase/migrations/.
 - The hero-wide-bottle.webp asset supplies desktop panoramic framing; the original image remains used on mobile.
 
