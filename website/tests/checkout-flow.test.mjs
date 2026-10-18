@@ -32,6 +32,13 @@ test('pending payment retains cart and does not show success',async()=>{
   assert.equal(page.node('#checkout-confirming').hidden,false);
 });
 
+test('a rejected link session clears locally without consuming the unpaid bag',async()=>{
+  const page=browser({session:{...saved,paymentMethod:'payment_link',requested:true},reply:{status:'failed'}});
+  await vm.runInContext('checkPayment(readSession())',page.context);
+  assert.equal(page.storage.has('madikar-checkout-session'),false);assert.equal(page.consumed.length,0);
+  assert.equal(page.node('#checkout-success').hidden,true);
+});
+
 test('overlapping verification and status responses consume one session only once, even after dismissal',async()=>{
  const result={status:'paid',reference:'ORD-FIXTURE',paymentId:'pay_fixture',mode:'test'};
  const page=browser({session:saved,reply:result});await setImmediate();

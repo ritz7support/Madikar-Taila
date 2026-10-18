@@ -1,5 +1,16 @@
 # Madikar Taila website source
 
+## 18 October review fixes — latest checkpoint
+
+Published: same public Site version 38, source 45b4f88f7bfcf7fc34e450ed6bb19e11042567d0; deployment appgdep_6ad443cdd9688191a87c23e044d2e7c3 succeeded.
+
+Read docs/plans/PHASE_ONE_REVIEW_FIXES_2026-10-18.md (relative to the repository root). The owner retired the n8n/Google Sheet fulfilment handoff; Supabase admin Orders is the fulfilment workspace. Payment confirmations remain direct Supabase-to-WhatsApp. New verified website payments become Processing atomically; no n8n sends/retries remain. Historical orders and handoff markers are preserved.
+
+Definitively rejected website link creation can restart safely; uncertain creates retain their original reference. Terminal unpaid sessions stop automatic polling. New guest Profiles have no trusted name/email until WhatsApp registration; order delivery details remain intact. Sensitive bot logging and legacy/phone-field Flow identity fallbacks are removed. Valid signed/encrypted Flows remain supported. Delivered changes now ask for confirmation. Active weight shipping is unchanged; its legacy flat-price fallback is disabled.
+
+Migration 20261018034139 is applied. Deployed sources match: madikar-store 21, whatsapp-flow 51, whatsapp-webhook 97, razorpay-webhook 36, retired retry-order-handoffs 7; sync-meta-catalog 11 is unchanged. 115 offline tests, three rollback SQL suites and desktop/mobile mocked browser checks pass. Existing product/variant/customer/order/payment fingerprints match. Admin-token changes are explicitly owner-deferred; prices, shipping arithmetic, both signing keys and the full catalog-sync prohibition are preserved. No real payment, customer message or Meta catalog write was performed. Older sections below are dated history where superseded.
+
+
 Canonical source for Site appgprj_6ab742ddf3e48191911b4bb531bb0ca8, https://madikartaila.com. Sites is a publishing mirror; preserve its project/audience. Phase-one work is consolidated on main. Site 36 / madikar-store v20 are current; read ../PROJECT_HANDOFF.md and ../docs/plans/PHASE_ONE_CLOSE_2026-10-17.md for source provenance and verification. The Orders tab preloads after sign-in, detail pages show complete images at smaller scale, and Delivered messages include direct transitions plus an explicit action for historical orders.
 
 Read ../PROJECT_HANDOFF.md, ../docs/plans/VARIANT_RETAILER_IDS_PHASE2_REPORT.md, ../BOT_BACKEND_DO_NOT_TOUCH.md, PAYMENTS.md and POLICY_PAGES.md. All 94 current variants have verified retailer IDs. Website and WhatsApp resolve exact packs. New website payments use Standard Payment Links; both channels charge variant-weight/box shipping at the owner's confirmed rate. Prices, historical items, UPI-only options and existing n8n/payment flows are preserved. The refreshed 94-item CSV and ₹1 checklist are in ../docs/catalog/. Its image links use Supabase; no CSV was uploaded to Meta. Do not replay backfill, insert superseded hidden rows or invoke current full sync; sync redesign remains separate.

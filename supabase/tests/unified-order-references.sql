@@ -37,7 +37,7 @@ begin
     if (replay->>'duplicate')::boolean is not true or replay->>'reference' <> saved->>'reference'
       or replay->>'orderId' <> saved->>'orderId' then raise exception 'Payment replay changed reference'; end if;
     if not exists(select 1 from public.orders o join public.payments p on p.order_id=o.id
-      where o.id=(saved->>'orderId')::bigint and o.source='store' and o.status='paid'
+      where o.id=(saved->>'orderId')::bigint and o.source='store' and o.status='processing'
       and o.total=5600 and p.amount=5600 and p.status='paid') then raise exception 'Paid data changed'; end if;
     if not exists(select 1 from public.store_payment_confirmations where session_id=sid and status='pending') then
       raise exception 'Confirmation was not queued';

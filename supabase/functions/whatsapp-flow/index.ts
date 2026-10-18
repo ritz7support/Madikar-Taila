@@ -4,7 +4,7 @@ const PRIVATE_KEY_PEM = Deno.env.get("WHATSAPP_FLOW_PRIVATE_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? "";
-const SIGNATURE_MODE = (Deno.env.get("FLOW_SIGNATURE_MODE") ?? "log").toLowerCase();
+// Flow endpoint requests always require a valid Meta signature.
 const FLOW_TOKEN_SECRET = Deno.env.get("FLOW_TOKEN_SECRET") ?? "";
 
 function hexToBytes(hex: string): Uint8Array | null { if (hex.length % 2 !== 0) return null; const bytes = new Uint8Array(hex.length / 2); for (let i = 0; i < bytes.length; i++) { const value = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16); if (Number.isNaN(value)) return null; bytes[i] = value; } return bytes; }
@@ -45,32 +45,17 @@ async function getProfileByWhatsAppId(waId: string) { const r = await db(`/rest/
 async function getProfileByUpdateFlowToken(token: string) {
   const signed = await parseSignedToken("update-profile", token, 1);
   if (signed) return await getProfileByWhatsAppId(signed[0]);
-  // Legacy unsigned format (issued before signed flow tokens, 24 Sep). Trusted as before
-  // for backward compatibility during rollout -- safe to delete once whatsapp-webhook has
-  // been emitting only signed tokens for at least the token TTL (24h) and no more legacy
-  // matches show up in logs.
-  const legacy = String(token).match(/^update-profile:([0-9]{8,20}):([a-f0-9-]+)$/i);
-  if (!legacy) return null;
-  console.warn("Accepted legacy unsigned update-profile flow token; remove this fallback once signed tokens have fully rolled out.");
-  return await getProfileByWhatsAppId(legacy[1]);
+  return null;
 }
 async function getProfileByCheckoutFlowToken(token: string) {
   const signed = await parseSignedToken("checkout-address", token, 2);
-  let orderId: string | null = signed ? signed[0] : null;
-  if (!orderId) {
-    // Legacy unsigned format -- see comment in getProfileByUpdateFlowToken.
-    const legacy = String(token).match(/^checkout-address:([0-9]+):([a-f0-9-]+)$/i);
-    if (legacy) {
-      orderId = legacy[1];
-      console.warn("Accepted legacy unsigned checkout-address flow token; remove this fallback once signed tokens have fully rolled out.");
-    }
-  }
+  const orderId = signed?.[0];
   if (!orderId) return null;
   const r = await db(`/rest/v1/orders?select=id,profile_id,whatsapp_user_id,status&id=eq.${encodeURIComponent(orderId)}&limit=1`);
   if (!r.ok) throw new Error(`Checkout order lookup failed: ${await r.text()}`);
   const rows = await r.json();
   const order = rows[0];
-  if (!order?.profile_id || order.status !== "pending_payment") return null;
+  if (!order?.profile_id || order.status !== "pending_payment" || String(order.whatsapp_user_id) !== signed?.[1]) return null;
   return { id: order.profile_id, whatsapp_user_id: order.whatsapp_user_id ?? "" };
 }
 async function getFlowProfile(body: any) {
@@ -79,15 +64,12 @@ async function getFlowProfile(body: any) {
   if (checkoutProfile?.id) return checkoutProfile;
   const updateProfile = await getProfileByUpdateFlowToken(token);
   if (updateProfile?.id) return updateProfile;
-  const waId = getWhatsAppId(body);
-  if (!waId) return null;
-  return await getProfileByWhatsAppId(waId);
+  return null;
 }
 async function getAddresses(profileId: string) { const r = await db(`/rest/v1/addresses?select=id,label,recipient_name,phone,address_line_1,address_line_2,locality,city,state,pincode,country,is_default,is_active&profile_id=eq.${encodeURIComponent(profileId)}&is_active=eq.true&order=is_default.desc,updated_at.desc`); if (!r.ok) throw new Error(`Address lookup failed: ${await r.text()}`); return await r.json(); }
 function addressSummary(address: any) { return [address.address_line_1, address.locality, address.city].filter(Boolean).join(", ").slice(0, 20); }
 function flowAddressItems(addresses: any[]) { return addresses.map((a) => ({ id: a.id, "main-content": { title: a.label || "Address", description: addressSummary(a), metadata: `${a.city || ""}${a.pincode ? `, ${a.pincode}` : ""}`.trim() }, "on-click-action": { name: "data_exchange", payload: { selected_address_id: a.id } } })); }
 function addressOptions(hasSavedAddresses: boolean) { const options: any[] = []; if (hasSavedAddresses) options.push({ id: "select_address", "main-content": { title: "Select an address", description: "Choose address" }, "on-click-action": { name: "data_exchange", payload: { user_action: "SELECT_ADDRESS" } } }); options.push({ id: "add_new_address", "main-content": { title: "Add a new address", description: "Create new address" }, "on-click-action": { name: "navigate", next: { type: "screen", name: "NEW_ADDRESS" }, payload: {} } }); return options; }
-function getWhatsAppId(body: any): string { const fromData = body?.data?.whatsapp_user_id ?? body?.data?.wa_id; if (fromData) return String(fromData); const token = String(body?.flow_token ?? ""); const match = token.match(/^(?:address-test-|address-)(\d{8,20})$/); return match ? match[1] : ""; }
 async function handleInit(body: any) {
   const token = String(body?.flow_token ?? "");
   const updateProfile = await getProfileByUpdateFlowToken(token);
@@ -183,12 +165,12 @@ Deno.serve(async (req: Request) => {
   try {
     const rawBody = await req.text();
     const signatureValid = await isValidMetaSignature(rawBody, req.headers.get("x-hub-signature-256"));
-    console.log("Flow request signature:", JSON.stringify({ valid: signatureValid, mode: SIGNATURE_MODE }));
-    if (!signatureValid && SIGNATURE_MODE === "enforce") return new Response("Invalid signature", { status: 432 });
+    console.log("Flow request signature:", JSON.stringify({ valid: signatureValid }));
+    if (!signatureValid) return new Response("Invalid signature", { status: 432 });
     const payload = JSON.parse(rawBody);
     if (!payload?.encrypted_aes_key || !payload?.encrypted_flow_data || !payload?.initial_vector) return new Response("Invalid Flow request", { status: 400 });
     const { body, aesKey, iv } = await decryptRequest(payload);
-    console.log("WhatsApp Flow action:", body.action, "screen:", body.screen, "flow_token:", body.flow_token ?? "", "data:", JSON.stringify(body.data ?? {}));
+    console.log("WhatsApp Flow request processed");
     let response: Record<string, unknown>;
     if (body.action === "ping") response = { version: "3.0", data: { status: "active" } };
     else if (body.action === "INIT") response = await handleInit(body);
@@ -197,7 +179,7 @@ Deno.serve(async (req: Request) => {
     const encryptedResponse = await encryptResponse(response, aesKey, iv);
     return new Response(encryptedResponse, { status: 200, headers: { "Content-Type": "text/plain" } });
   } catch (error) {
-    console.error("WhatsApp address Flow endpoint error:", error);
+    console.error("WhatsApp address Flow endpoint failed");
     return new Response("Internal Server Error", { status: 500 });
   }
 });

@@ -30,10 +30,12 @@ begin
     replay:=public.store_finalize_link_checkout(sid,link_id,ref,provider_order,provider_payment,39000,'INR','upi',now());
     if replay->>'reference'<>saved->>'reference' or (replay->>'duplicate')::boolean is not true then raise exception 'Duplicate finalization';end if;
     if not exists(select 1 from public.orders o join public.payments p on p.order_id=o.id where o.id=(saved->>'orderId')::bigint
-      and o.source='store' and o.total=390 and o.shipping=40 and o.subtotal=350 and o.shipping_quote->>'packedGrams'='1100'
+      and o.source='store' and o.status='processing' and o.handoff_sent_at is null
+      and o.total=390 and o.shipping=40 and o.subtotal=350 and o.shipping_quote->>'packedGrams'='1100'
       and p.provider_payment_link_id=link_id and p.provider_order_id=provider_order and p.amount=390 and p.payment_method='upi') then raise exception 'Paid amount or identity mismatch';end if;
     if (select count(*) from public.order_items where order_id=(saved->>'orderId')::bigint)<>1 then raise exception 'Duplicate items';end if;
     if (select count(*) from public.store_payment_confirmations where session_id=sid)<>1 then raise exception 'Confirmation missing or duplicated';end if;
+    if exists(select 1 from public.store_claim_checkout_work(sid)) then raise exception 'Paid checkout still claimed for n8n';end if;
     begin
       perform public.store_finalize_link_checkout(sid,link_id,ref,provider_order,'pay_other',39000,'INR','upi',now());
       raise exception 'Second payment accepted';

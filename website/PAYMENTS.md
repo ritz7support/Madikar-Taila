@@ -1,5 +1,16 @@
 # Website checkout — updated 17 October 2026
 
+## 18 October review fixes — latest checkpoint
+
+Published: same public Site version 38, source 45b4f88f7bfcf7fc34e450ed6bb19e11042567d0; deployment appgdep_6ad443cdd9688191a87c23e044d2e7c3 succeeded.
+
+Read docs/plans/PHASE_ONE_REVIEW_FIXES_2026-10-18.md (relative to the repository root). The owner retired the n8n/Google Sheet fulfilment handoff; Supabase admin Orders is the fulfilment workspace. Payment confirmations remain direct Supabase-to-WhatsApp. New verified website payments become Processing atomically; no n8n sends/retries remain. Historical orders and handoff markers are preserved.
+
+Definitively rejected website link creation can restart safely; uncertain creates retain their original reference. Terminal unpaid sessions stop automatic polling. New guest Profiles have no trusted name/email until WhatsApp registration; order delivery details remain intact. Sensitive bot logging and legacy/phone-field Flow identity fallbacks are removed. Valid signed/encrypted Flows remain supported. Delivered changes now ask for confirmation. Active weight shipping is unchanged; its legacy flat-price fallback is disabled.
+
+Migration 20261018034139 is applied. Deployed sources match: madikar-store 21, whatsapp-flow 51, whatsapp-webhook 97, razorpay-webhook 36, retired retry-order-handoffs 7; sync-meta-catalog 11 is unchanged. 115 offline tests, three rollback SQL suites and desktop/mobile mocked browser checks pass. Existing product/variant/customer/order/payment fingerprints match. Admin-token changes are explicitly owner-deferred; prices, shipping arithmetic, both signing keys and the full catalog-sync prohibition are preserved. No real payment, customer message or Meta catalog write was performed. Older sections below are dated history where superseded.
+
+
 ## Phase-one closure: delivery transitions and historical orders
 
 The owner has filled Mustard oil 1 L with 910 g. Final inspection found no missing variant weights, and a read-only live quote correctly returns ₹40 shipping for its 1,010 g packed weight. Earlier missing-weight notes below are historical.

@@ -108,7 +108,7 @@ async function checkPayment(session){
   }
   if(readSession()?.sessionId!==session.sessionId)return true;
   if(showPaid(result,session))return true;
-  if(['cancelled','expired'].includes(result.status)){
+  if(['cancelled','expired','failed'].includes(result.status)){
     if(readSession()?.sessionId===session.sessionId)sessionStorage.removeItem(sessionKey);
     busy=false;closeCheckout();openCheckout();setStatus('The earlier payment link is '+result.status+'. Review your total before starting a new payment.');return true;
   }
@@ -181,7 +181,7 @@ checkoutForm.addEventListener('submit',async event=>{
     razorpay.on('payment.failed',response=>setStatus(response.error?.description||'Payment was not completed. You can retry in the payment window.','error'));
     razorpay.open();setStatus('Complete your payment in the secure Razorpay window.');
   }catch(error){
-    if(/checkout expired|Your checkout total changed/.test(error.message))sessionStorage.removeItem(sessionKey);
+    if(/checkout expired|Payment link creation was rejected|Your checkout total changed/.test(error.message))sessionStorage.removeItem(sessionKey);
     busy=false;renderCheckoutSummary();setStatus(error.message,'error');
     if(/Your checkout total changed/.test(error.message))void loadPaymentConfig();
   }
@@ -207,7 +207,7 @@ document.querySelector('#payment-cancel')?.addEventListener('click',async()=>{
   try{
     const result=await jsonPost('/api/checkout/cancel',identity(s));
     if(showPaid(result,s))return;
-    if(!['cancelled','expired'].includes(result.status))throw new Error('Payment is still being checked. Try again shortly.');
+    if(!['cancelled','expired','failed'].includes(result.status))throw new Error('Payment is still being checked. Try again shortly.');
     sessionStorage.removeItem(sessionKey);busy=false;closeCheckout();openCheckout();
   }catch(error){document.querySelector('#confirmation-progress').textContent=error.message}
   finally{button.disabled=false}

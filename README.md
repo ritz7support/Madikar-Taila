@@ -2,7 +2,7 @@
 
 Canonical monorepo for the public [storefront](https://madikartaila.com), admin dashboard and Supabase WhatsApp ordering/payment backend. Completed phase-one work is consolidated on `main`; create new work branches from current main after checking Git status/history.
 
-Start with [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) and [Project_Instructions.md](Project_Instructions.md). The latest checkpoint and verification are in [the phase-one closure report](docs/plans/PHASE_ONE_CLOSE_2026-10-17.md). Earlier dated sections are historical where superseded.
+Start with [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) and [Project_Instructions.md](Project_Instructions.md). The latest checkpoint is [the 18 October review-fix report](docs/plans/PHASE_ONE_REVIEW_FIXES_2026-10-18.md), following [the phase-one closure report](docs/plans/PHASE_ONE_CLOSE_2026-10-17.md). Earlier dated sections are historical where superseded.
 
 - `website/`: editable frontend and Sites Worker source. Sites is a separate publishing mirror of this directory, using the same existing public Site.
 - `supabase/functions/`: deployed Edge Functions. Website/admin logic lives in `madikar-store`; preserve the [bot boundaries](BOT_BACKEND_DO_NOT_TOUCH.md).

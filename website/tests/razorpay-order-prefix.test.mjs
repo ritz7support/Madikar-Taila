@@ -48,10 +48,10 @@ test('signed live/test payment events store the canonical ID and preserve paid f
     assert.equal(f.state.rpc[0].p_provider_order_id,'order_ABC123');
     assert.equal(f.state.payment.provider_payment_id,'pay_fixture');
     assert.equal(f.state.payment.amount,1);assert.equal(f.state.order.reference_id,'ORD-fixture');
-    assert.equal(f.state.order.status,'processing');assert.equal(f.state.messages.length,1);assert.equal(f.state.handoffs.length,1);
+    assert.equal(f.state.order.status,'processing');assert.equal(f.state.messages.length,1);assert.equal(f.state.handoffs.length,0);
     assert.equal(f.state.messages[0].interactive.action.parameters.payment.status,'captured');
     assert.equal((await f.send(body)).status,200);
-    assert.equal(f.state.rpc.length,1);assert.equal(f.state.messages.length,1);assert.equal(f.state.handoffs.length,1);
+    assert.equal(f.state.rpc.length,1);assert.equal(f.state.messages.length,1);assert.equal(f.state.handoffs.length,0);
   }
 });
 test('bare order entity fallback receives exactly one prefix',async()=>{

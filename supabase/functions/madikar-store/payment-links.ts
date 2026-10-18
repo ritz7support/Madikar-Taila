@@ -33,10 +33,19 @@ export function createWebsitePaymentLinks({razorpay,patch,rpc,background,work}){
       notes:{website_session:s.id,source:'madikar_website'},
       callback_url:'https://madikartaila.com/?payment=return',callback_method:'get',
       options:{checkout:{method:{upi:1,card:0,netbanking:0,wallet:0}}}};
-    const link=await razorpay(s.mode,'/payment_links',{method:'POST',body:JSON.stringify(payload)});
+    let link;
+    try{link=await razorpay(s.mode,'/payment_links',{method:'POST',body:JSON.stringify(payload)});}
+    catch(error){
+      if(error.creationRejected===true){
+        await patch(s.id,{payment_resolution:'creation_rejected'},'&status=eq.preparing&provider_payment_link_id=is.null');
+        fail('Payment link creation was rejected. Please review your details and start a new checkout.',409);
+      }
+      throw error;
+    }
     await remember(s,link);return prepared(s);
   }
   async function prepared(s){
+    if(s.payment_resolution==='creation_rejected')fail('Payment link creation was rejected. Please start a new checkout.',409);
     const link=await recover(s);
     if(!link)fail('Payment preparation is still pending. Please try again shortly.',503);
     if(['cancelled','expired'].includes(link.status))fail('This checkout expired. Please start a new checkout.',409);
@@ -45,10 +54,20 @@ export function createWebsitePaymentLinks({razorpay,patch,rpc,background,work}){
     return {sessionId:s.id,paymentMethod:'payment_link',paymentUrl:link.short_url,amountPaise:s.total_paise,mode:s.mode,expiresAt:s.expires_at};
   }
   async function reconcile(s,providedLink=null){
+    if(s.payment_resolution==='creation_rejected')return {status:'failed'};
     const link=providedLink||await recover(s);
-    if(!link)return {status:Date.parse(s.expires_at)<Date.now()?'expired':'pending'};
+    if(!link){
+      if(Date.parse(s.expires_at)<Date.now()){
+        await patch(s.id,{payment_resolution:'expired'},'&status=neq.paid');return {status:'expired'};
+      }
+      return {status:'pending'};
+    }
     validate(s,link);
-    if(link.status!=='paid')return {status:['cancelled','expired'].includes(link.status)&&!(link.payments||[]).some(p=>['authorized','captured'].includes(p.status))?link.status:'pending',paymentUrl:link.short_url,expiresAt:s.expires_at};
+    if(link.status!=='paid'){
+      const status=['cancelled','expired'].includes(link.status)&&!(link.payments||[]).some(p=>['authorized','captured'].includes(p.status))?link.status:'pending';
+      if(status!=='pending')await patch(s.id,{payment_resolution:status},'&status=neq.paid');
+      return {status,paymentUrl:link.short_url,expiresAt:s.expires_at};
+    }
     if(link.amount_paid!==s.total_paise)fail('Payment amount does not match this checkout.');
     const payments=(link.payments||[]).filter(p=>p.status==='captured'&&p.amount===s.total_paise);
     if(payments.length!==1||!/^pay_[A-Za-z0-9]+$/.test(payments[0].payment_id||''))return {status:'pending'};
@@ -63,6 +82,7 @@ export function createWebsitePaymentLinks({razorpay,patch,rpc,background,work}){
     background(work(s.id));return {status:'paid',reference:saved.reference,paymentId:payment.id,amountPaise:s.total_paise,mode:s.mode};
   }
   async function cancel(s){
+    if(s.payment_resolution==='creation_rejected')return {status:'failed'};
     const link=await recover(s);if(!link){if(Date.parse(s.expires_at)<Date.now())return {status:'expired'};fail('Payment preparation is still pending. Check again shortly.',409);}
     const current=await reconcile(s,link);
     if(current.status!=='pending')return current;

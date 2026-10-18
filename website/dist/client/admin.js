@@ -256,7 +256,7 @@ function renderOrders(){
   $('#orders-loading').hidden=!state.orderLoading;
   $('#orders-list').setAttribute('aria-busy',String(state.orderLoading));
   $('#orders-list').innerHTML=state.orders.length?state.orders.map(o=>{
-    const customer=o.customer_name || o.profile?.name || o.whatsapp_user_id || 'Customer';
+    const customer=o.customer_name || (o.source==='store'?o.address?.recipient_name:null) || o.profile?.name || o.whatsapp_user_id || 'Customer';
     const phone=o.customer_phone || o.address?.phone || o.whatsapp_user_id || '';
     const date=new Date(o.created_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});
     const items=(o.items || []).map(i=>`<li>${escapeHtml(i.product_name || i.product_retailer_id)}${i.variant_size?' · '+escapeHtml(i.variant_size):''} × ${i.quantity} — ${money(i.unit_price*i.quantity)}</li>`).join('');
@@ -379,6 +379,9 @@ function openShipmentDialog(order,select){
 }
 async function updateOrderStage(order,select,stage,trackingId,estimatedDeliveryDays){
   const previous=order.fulfillment_status || 'processing';
+  if(stage==='completed'&&previous!=='completed'&&!confirm(`Mark ${order.reference_id} as Delivered? This also requests a WhatsApp delivery message if one has not already been sent.`)){
+    select.value=previous;return;
+  }
   select.disabled=true;
   try{
     const data=await adminApi('admin_update_fulfillment',{id:order.id,status:stage,previousStatus:previous,...(stage==='shipped'?{trackingId,estimatedDeliveryDays}:{})});

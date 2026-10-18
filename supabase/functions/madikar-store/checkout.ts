@@ -51,7 +51,16 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
     const {id,secret}=keys(mode);
     const response=await fetcher('https://api.razorpay.com/v1'+path,{...options,headers:{Authorization:'Basic '+btoa(id+':'+secret),'Content-Type':'application/json'},signal:AbortSignal.timeout(15000)});
     const data=await response.json().catch(()=>null);
-    if(!response.ok||!data)fail('The payment service is temporarily unavailable. Please try again.',502);
+    if(!response.ok||!data){
+      // A rejected create is different from a timeout or an ambiguous duplicate
+      // reference. Never expose provider details or replay an uncertain POST.
+      const error=Object.assign(new Error('The payment service is temporarily unavailable. Please try again.'),{status:502,creationRejected:false});
+      const description=String(data?.error?.description||'');
+      error.creationRejected=options.method==='POST'&&path==='/payment_links'&&
+        [400,401,403,404,422].includes(response.status)&&data?.error?.code==='BAD_REQUEST_ERROR'&&
+        !/duplicate|reference.*(?:exist|already|attempt|unique|use)/i.test(description);
+      throw error;
+    }
     return data;
   }
   async function quote(raw){
@@ -107,7 +116,9 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
       }
       if(!user)throw error;
     }
-    try{await db('/rest/v1/Profile?on_conflict=whatsAppUserId',{method:'POST',headers:{Prefer:'resolution=ignore-duplicates'},body:JSON.stringify({id:user.id,whatsAppUserId:phone,language:'en',name:address.name,email:address.email||null})});}
+    // Guest delivery details belong to this order. They do not prove ownership
+    // of the phone number; let its WhatsApp owner complete bot registration.
+    try{await db('/rest/v1/Profile?on_conflict=whatsAppUserId',{method:'POST',headers:{Prefer:'resolution=ignore-duplicates'},body:JSON.stringify({id:user.id,whatsAppUserId:phone,language:'en',name:null,email:null})});}
     catch(error){if(error.status!==409)throw error;}
     const saved=await lookup();if(!saved)fail('Your checkout could not be prepared. Please try again.',502);
     return saved.id;
@@ -189,21 +200,8 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
   }
   async function status(body){const s=await session(body);return s.status==='paid'?paidResult(s):reconcile(s);}
   async function cancel(body){const s=await session(body);if(s.status==='paid')return paidResult(s);if(s.payment_method!=='payment_link')fail('This checkout cannot be cancelled here.',409);return links.cancel(s);}
-  async function handoff(s){
-    if(s.handoff_sent_at)return;
-    const webhook=env('N8N_WEBHOOK_URL');if(!webhook)fail('Fulfilment is not configured.',503);
-    const [order]=await db('/rest/v1/orders?select=id,reference_id,address_id,status,created_at&id=eq.'+s.order_id+'&source=eq.store&limit=1');
-    const [address]=await db('/rest/v1/addresses?select=id,label,recipient_name,phone,address_line_1,address_line_2,locality,city,state,pincode,country&id=eq.'+order.address_id+'&limit=1');
-    const payload={event:'order.paid',payment_mode:s.mode,is_test:s.mode==='test',order_id:order.id,reference_id:order.reference_id,order_status:'processing',
-      customer:{phone:s.phone,name:s.customer.name,email:s.customer.email||null},address,
-      items:s.items.map(i=>({product_id:i.retailerId,name:i.name,quantity:i.quantity,unit_price:i.unitPaise/100,line_total:i.unitPaise*i.quantity/100,currency:'INR'})),
-      subtotal:s.subtotal_paise/100,shipping:s.shipping_paise/100,discount:0,total:s.total_paise/100,currency:'INR',order_created_at:order.created_at,confirmed_at:s.paid_at};
-    const response=await fetcher(webhook,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':'website:'+s.id},body:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
-    if(!response.ok){const detail=(await response.text()).slice(0,180);fail('n8n HTTP '+response.status+': '+detail,502);}
-    await rpc('store_complete_handoff',{p_session_id:s.id});
-  }
   async function work(id=null){
-    // Independent tasks: WhatsApp failure must never prevent the n8n handoff.
+    // Supabase owns order finalization and direct WhatsApp confirmations.
     const results=await Promise.allSettled([checkoutWork(id),confirmations.work(id)]);
     if(results[1].status==='rejected')console.error('Website confirmation recovery unavailable.');
     if(results[0].status==='rejected')throw results[0].reason;
@@ -212,7 +210,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
   async function checkoutWork(id=null){
     const sessions=await rpc('store_claim_checkout_work',{p_session_id:id});
     await Promise.all(sessions.map(async s=>{
-      try{if(s.status!=='paid')await reconcile(s);else await handoff(s);}
+      try{if(s.status!=='paid')await reconcile(s);}
       catch(error){await patch(s.id,{last_error:String(error.message||'Retry pending').slice(0,250)});}
     }));
     return {checked:sessions.length};

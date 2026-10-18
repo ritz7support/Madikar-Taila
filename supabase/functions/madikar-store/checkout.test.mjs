@@ -26,7 +26,7 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRe
       payload=state.sessions.filter(s=>id?s.id===id:(url.searchParams.has('provider_payment_link_id')?s.provider_payment_link_id===url.searchParams.get('provider_payment_link_id').slice(3):s.provider_order_id===url.searchParams.get('provider_order_id')?.slice(3)));
     }else if((table==='store_finalize_checkout'||table==='store_finalize_link_checkout')){
       const s=state.sessions.find(s=>s.id===data.p_session_id);
-      if(s.status!=='paid'){state.finalized++;Object.assign(s,{status:'paid',order_id:1,provider_payment_id:data.p_payment_id,paid_at:data.p_paid_at});state.orders.push({id:1,reference_id:'WEB-fixture',address_id:crypto.randomUUID(),status:'paid'});}
+      if(s.status!=='paid'){state.finalized++;Object.assign(s,{status:'paid',order_id:1,provider_payment_id:data.p_payment_id,paid_at:data.p_paid_at});state.orders.push({id:1,reference_id:'WEB-fixture',address_id:crypto.randomUUID(),status:'processing'});}
       payload={reference:'WEB-fixture'};
     }else if(table==='orders')payload=state.orders;
     else if(table==='addresses')payload=[{id:'address',recipient_name:address.name}];
@@ -43,7 +43,8 @@ function fixture({mode='test',existing=true,enabled=true,shipping=5000,variantRe
     if(state.providerReads && (url.endsWith('/payments/pay_fixture')||url.endsWith('/orders/order_fixture'))){
       await new Promise(resolve=>state.providerReads.set(url.split('/').at(-1),resolve));
     }
-    if(url.endsWith('/payment_links')&&options.method==='POST'){state.remoteOrders++;const payload=JSON.parse(options.body);state.link={...payload,id:'plink_fixture',short_url:'https://rzp.io/i/fixture',order_id:'order_fixture',status:'created',payments:[],amount_paid:0};return Response.json(state.link)}
+    if(url.endsWith('/payment_links')&&options.method==='POST'){state.remoteOrders++;if(state.rejectLink)return Response.json({error:{code:'BAD_REQUEST_ERROR',description:state.rejectLink}},{status:400});const payload=JSON.parse(options.body);state.link={...payload,id:'plink_fixture',short_url:'https://rzp.io/i/fixture',order_id:'order_fixture',status:'created',payments:[],amount_paid:0};return Response.json(state.link)}
+    if(url.includes('/payment_links?reference_id='))return Response.json({payment_links:state.link?[state.link]:[]});
     if(url.endsWith('/payment_links/plink_fixture'))return Response.json(state.link);
     if(url.endsWith('/orders')&&options.method==='POST'){state.remoteOrders++;return Response.json({id:'order_fixture',amount:JSON.parse(options.body).amount,currency:'INR'})}
     if(url.endsWith('/orders/order_fixture/payments'))return Response.json({items:[state.payment]});
@@ -77,7 +78,7 @@ test('mode selection, private existing profile reuse, server prices, repeat crea
 test('new profile uses same hidden Auth identity; no address or order before payment',async()=>{
   const f=fixture({existing:false});await f.service.create(body());
   const auth=f.state.calls.find(c=>c.path==='/auth/v1/admin/users');assert.equal(auth.data.email,'wa_919000000001@whatsapp.local');
-  assert.equal(f.state.profiles[0].whatsAppUserId,'919000000001');assert.equal(f.state.orders.length,0);assert.equal(f.state.calls.some(c=>c.path.includes('/addresses')),false);
+  assert.equal(f.state.profiles[0].whatsAppUserId,'919000000001');assert.equal(f.state.profiles[0].name,null);assert.equal(f.state.profiles[0].email,null);assert.equal(f.state.sessions[0].customer.name,address.name);assert.equal(f.state.orders.length,0);assert.equal(f.state.calls.some(c=>c.path.includes('/addresses')),false);
 });
 
 test('mapped pack identity is preferred with parent fallback, unchanged prices and zero shipping',async()=>{
@@ -127,19 +128,36 @@ test('authenticated webhook recovers closed browser and ignores bot payment orde
   await f.service.webhook(event,mac('test-hook',event));await f.service.webhook(event,mac('test-hook',event));assert.equal(f.state.finalized,1);
   const other=event.replaceAll('order_fixture','order_bot');assert.equal((await f.service.webhook(other,mac('test-hook',other))).ignored,true);await f.flush();
 });
-test('both test and live website payments trigger n8n with explicit mode',async()=>{
+test('both test and live payments finalize without any n8n handoff',async()=>{
   for(const mode of ['live','test']){const f=fixture({mode}),b=body();await f.service.create(b);await f.verify(b);await f.flush();f.state.due=[f.state.sessions[0]];await f.service.work();
-    assert.equal(f.state.handoffs.length,1);assert.equal(f.state.orders[0].status,'processing');
-    assert.equal(f.state.handoffs[0].payment_mode,mode);assert.equal(f.state.handoffs[0].is_test,mode==='test');if(true){assert.equal(f.state.handoffs[0].event,'order.paid');assert.equal(f.state.handoffs[0].items[0].unit_price,175);}
+    assert.equal(f.state.handoffs.length,0);assert.equal(f.state.orders[0].status,'processing');assert.equal(f.state.finalized,1);
   }
 });
 test('recovery requires its separate secret',async()=>{const f=fixture();assert.equal(await f.service.authorizeRecovery(null),false);assert.equal(await f.service.authorizeRecovery('e'.repeat(64)),false);assert.equal(await f.service.authorizeRecovery('f'.repeat(64)),true)});
 
-test('WhatsApp tracking failure cannot block payment result or n8n',async()=>{
+test('provider validation rejection is restartable but duplicate reference remains uncertain',async()=>{
+  for(const [description,rejected] of [['customer contact is invalid',true],['payment link creation with reference ID already attempted',false]]){
+    const f=fixture({paymentMethod:'payment_link',weightShipping:true}),b={...body(),expectedAmountPaise:39000};f.state.rejectLink=description;
+    await assert.rejects(f.service.create(b));
+    assert.equal(f.state.sessions[0].payment_resolution==='creation_rejected',rejected);
+    assert.equal((await f.service.status(b)).status,rejected?'failed':'pending');
+    if(rejected)assert.equal((await f.service.cancel(b)).status,'failed');else await assert.rejects(f.service.cancel(b),/pending/);
+    assert.equal(f.state.remoteOrders,1);assert.equal(f.state.finalized,0);
+  }
+});
+
+test('weight shipping works without a legacy flat price; loss of policy fails closed',async()=>{
+  const f=fixture({shipping:null,paymentMethod:'payment_link',weightShipping:true});
+  assert.equal((await f.service.config()).ready,true);assert.equal((await f.service.preview({lines:body().lines})).shippingPaise,4000);
+  const g=fixture({shipping:null,paymentMethod:'payment_link'});assert.equal((await g.service.config()).ready,false);
+  await assert.rejects(g.service.create(body()),/not available/);assert.equal(g.state.remoteOrders,0);
+});
+
+test('WhatsApp tracking failure cannot block verified order creation',async()=>{
   const f=fixture(),b=body();await f.service.create(b);f.state.confirmationError=true;
   assert.equal((await f.verify(b)).status,'paid');await f.flush();
   f.state.due=[f.state.sessions[0]];await f.service.work();
-  assert.equal(f.state.handoffs.length,1);assert.equal(f.state.orders[0].status,'processing');
+  assert.equal(f.state.handoffs.length,0);assert.equal(f.state.orders[0].status,'processing');
 });
 test('payment and order reads overlap, and neither alone can produce success',async()=>{
  const f=fixture(),b=body();await f.service.create(b);f.state.providerReads=new Map();

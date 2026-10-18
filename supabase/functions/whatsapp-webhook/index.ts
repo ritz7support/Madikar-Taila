@@ -119,10 +119,10 @@ async function send(payload:unknown){
   const r=await graph(`/${PHONE_NUMBER_ID}/messages`,{method:"POST",body:JSON.stringify(payload)});
   if(!r.ok){
     const text=await r.text();
-    console.log("WhatsApp send result:",JSON.stringify({status:r.status,response:text,payload}));
-    throw new Error(`WhatsApp API ${r.status}: ${text}`);
+    console.log("WhatsApp send result:",JSON.stringify({status:r.status}));
+    throw new Error(`WhatsApp API ${r.status}`);
   }
-  console.log("WhatsApp send result:",JSON.stringify({status:r.status,payload}));
+  console.log("WhatsApp send result:",JSON.stringify({status:r.status}));
   return {status:r.status};
 }
 
@@ -187,7 +187,7 @@ async function ensureProfileInBackground(waId:string){
     if(existing)return existing;
     return await createProfile(waId);
   }catch(e){
-    console.error("Background profile creation failed:",e);
+    console.error("Background profile creation failed");
     return null;
   }
 }
@@ -373,8 +373,7 @@ function parseAddressFlowToken(token:string){
   // attach to someone else's order.
   const signed=/^checkout-address:([0-9]+):[0-9]{8,20}:[a-f0-9-]+:[0-9]+:[a-f0-9]+$/i.exec(token);
   if(signed)return{orderId:Number(signed[1])};
-  const legacy=/^checkout-address:([0-9]+):([a-f0-9-]+)$/i.exec(token);
-  return legacy?{orderId:Number(legacy[1])}:null;
+  return null;
 }
 
 async function getPendingOrderForWaId(waId:string){
@@ -639,13 +638,8 @@ async function handleAddressFlowCompletion(waId:string,data:any){
   const token=String(data?.flow_token??"").trim();
   if(!addressId||!token)throw new Error("Address Flow completion missing address_id or flow_token");
   const tokenData=parseAddressFlowToken(token);
-  const order=tokenData
-    ?await attachAddressToOrder(tokenData.orderId,waId,addressId)
-    :await(async()=>{
-      const p=await getPendingOrderForWaId(waId);
-      if(!p)throw new Error(`No pending order found for ${waId}`);
-      return attachAddressToOrder(Number(p.id),waId,addressId);
-    })();
+  if(!tokenData)throw new Error("Address Flow token is no longer valid. Please reopen checkout.");
+  const order=await attachAddressToOrder(tokenData.orderId,waId,addressId);
   const [items,payment]=await Promise.all([
     getOrderItems(Number(order.id)),
     createRazorpayPaymentLink(order,waId)
@@ -738,7 +732,7 @@ Deno.serve(async(req:Request)=>{
 
     return Response.json({ok:true});
   }catch(e){
-    console.error("Webhook error:",e);
-    return Response.json({ok:false,error:String(e)},{status:500});
+    console.error("WhatsApp webhook processing failed");
+    return Response.json({ok:false,error:"Webhook processing failed"},{status:500});
   }
 });
