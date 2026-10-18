@@ -1,7 +1,7 @@
 // Generated into dist/server/index.js by scripts/build-worker.mjs.
 // Razorpay credentials stay in Supabase. Sites signs requests to the website service.
 const encoder = new TextEncoder();
-const STATIC_VERSION = '7b907abb5c27d0c7260a';
+const STATIC_VERSION = '0cfd30efbcb11ff12907';
 
 async function staticAsset(request,env,ctx,path=null){
   if(!env.ASSETS)return new Response('Not found',{status:404});

@@ -11,7 +11,7 @@ function editor(){
     return elements.get(selector);
   };
   const calls=[];
-  const context=vm.createContext({document:{querySelector:element},URL,URLSearchParams,
+  const context=vm.createContext({setTimeout:()=>1,clearTimeout(){},document:{querySelector:element},URL,URLSearchParams,
     fetch:async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});return Response.json({});}});
   vm.runInContext(source,context);
   vm.runInContext(`state.token='a'.repeat(43); state.editing={id:1,name:'Oil',images:[],variants:[

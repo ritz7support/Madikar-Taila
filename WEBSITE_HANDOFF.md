@@ -1,5 +1,11 @@
 # Madikar Taila website handoff — 17 October 2026
 
+## 18 October owner tests and admin feedback — latest checkpoint
+
+Published: same public Site version 39, source 2e1091a80e32da5421fb2c76bb20d9ce153b706f; deployment appgdep_6ad4b5af9f6881918c93177dc6d92662 succeeded.
+
+Read docs/plans/OWNER_TEST_AUDIT_2026-10-18.md. The payment resume button is centred; Delivered uses a styled dialog with safe Cancel/Escape, save/error handling and repeated-click protection. Admin writes now show dismissible success/error toasts only after server responses; queued Meta/message work is clearly distinguished from confirmed acceptance. 122 automated tests and desktop/mobile browser checks pass. Backend functions and payment/shipping rules are unchanged. The owner's live cancellation, new cart totals, delivery notification and stock sync have been inspected; payment tests 1–3 remain pending.
+
 ## 18 October review fixes — latest checkpoint
 
 Published: same public Site version 38, source 45b4f88f7bfcf7fc34e450ed6bb19e11042567d0; deployment appgdep_6ad443cdd9688191a87c23e044d2e7c3 succeeded.

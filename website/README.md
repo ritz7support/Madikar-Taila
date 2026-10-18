@@ -1,5 +1,9 @@
 # Madikar Taila website source
 
+## 18 October admin feedback update
+
+Read ../docs/plans/OWNER_TEST_AUDIT_2026-10-18.md. Admin saves now show success/error toasts, Delivered uses a styled confirmation dialog, and Resume secure payment is centred. 122 automated tests and desktop/mobile mocked browser checks pass. No backend functions or payment/shipping rules changed. The report records the owner-test audit and current publication provenance.
+
 ## 18 October review fixes — latest checkpoint
 
 Published: same public Site version 38, source 45b4f88f7bfcf7fc34e450ed6bb19e11042567d0; deployment appgdep_6ad443cdd9688191a87c23e044d2e7c3 succeeded.

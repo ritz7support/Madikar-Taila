@@ -10,6 +10,7 @@
   <script src="admin.js" defer></script>
 </head>
 <body>
+  <div id="admin-notifications" role="status" aria-live="polite" aria-atomic="true"><div id="admin-toast" class="admin-toast" hidden><span id="admin-toast-message"></span><button type="button" id="admin-toast-close" aria-label="Dismiss notification">×</button></div></div>
   <header class="admin-header">
     <a class="brand" href="/"><span class="brand-mark">M</span><span>Madikar Taila <small>Store admin</small></span></a>
     <div class="header-actions"><span id="signed-in-email"></span><button id="copy-admin-link" type="button" hidden>Copy team link</button><button id="sign-out" type="button" hidden>Leave dashboard</button></div>
@@ -63,6 +64,15 @@
       <p id="delivery-days-help" class="help">Number of days after dispatch. Enter this to send the customer a WhatsApp shipping update. Leave blank to save the shipment without a message.</p>
       <p id="shipping-error" class="status" data-tone="error" role="alert"></p>
       <div class="shipping-actions"><button type="button" id="shipping-cancel">Cancel</button><button type="submit" id="shipping-save" class="primary">Save & mark Shipped</button></div>
+    </form>
+  </dialog>
+  <dialog id="delivered-dialog" class="shipping-dialog" aria-labelledby="delivered-title" aria-describedby="delivered-help">
+    <form id="delivered-form">
+      <p class="eyebrow">Complete delivery</p><h2 id="delivered-title">Mark as Delivered?</h2>
+      <p id="delivered-order-reference" class="help"></p>
+      <p id="delivered-help">This updates the order to Delivered and requests a WhatsApp delivery message if one has not already been sent.</p>
+      <p id="delivered-error" class="status" data-tone="error" role="alert"></p>
+      <div class="shipping-actions"><button type="button" id="delivered-cancel" autofocus>Cancel</button><button type="submit" id="delivered-save" class="primary">Mark Delivered</button></div>
     </form>
   </dialog>
 </body>

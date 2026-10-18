@@ -17,7 +17,7 @@ function harness(){
     fulfillment_status:'processing',created_at:'2026-10-07T00:00:00Z',total:175,subtotal:175,shipping:0,
     payments:index===0?[]:[{status:'paid',provider_payment_id:'pay_fixture'}]}));
   node('#order-source').value='all';
-  const context=vm.createContext({confirm:()=>true,document:{querySelector:node},URL,URLSearchParams,Response,sessionStorage:{setItem(){},removeItem(){}},
+  const context=vm.createContext({setTimeout:()=>1,clearTimeout(){},document:{querySelector:node},URL,URLSearchParams,Response,sessionStorage:{setItem(){},removeItem(){}},
     fetch:async(_url,options)=>{
       const body=JSON.parse(options.body);calls.push(body);
       if(body.action==='admin_update_fulfillment')return Response.json({fulfillmentStatus:body.status,trackingId:body.trackingId || null,estimatedDeliveryDays:body.estimatedDeliveryDays ?? null});
@@ -44,10 +44,56 @@ test('orders replace each 20-row page and filter at the server',async()=>{
   assert.deepEqual(h.calls.filter(c=>c.action==='admin_orders').map(c=>[c.page,c.source]),[[0,'all'],[1,'all'],[0,'store']]);
 });
 
-test('declining Delivered notification confirmation leaves the order unchanged',async()=>{
-  const h=harness();h.context.confirm=()=>false;
-  await vm.runInContext("updateOrderStage({id:1,reference_id:'ORD-old',fulfillment_status:'processing'},document.querySelector('#stage'),'completed')",h.context);
-  assert.equal(h.node('#stage').value,'processing');assert.equal(h.calls.length,0);
+test('Delivered uses a dialog; Cancel or Escape preserves the order without a write',async()=>{
+  const h=harness();await vm.runInContext('loadOrders(0)',h.context);
+  const select={dataset:{orderStage:'25'},value:'completed',disabled:false},before=h.calls.length;
+  await h.node('#orders-list').listeners.change({target:{closest:()=>select}});
+  assert.equal(h.node('#delivered-dialog').open,true);assert.equal(select.value,'processing');assert.equal(h.calls.length,before);
+  assert.equal(h.node('#delivered-order-reference').textContent,'ORDER-25');
+  h.node('#delivered-cancel').listeners.click();
+  assert.equal(h.node('#delivered-dialog').open,false);assert.equal(h.calls.length,before);
+  select.value='completed';await h.node('#orders-list').listeners.change({target:{closest:()=>select}});
+  let blocked=false;h.node('#delivered-dialog').listeners.cancel({preventDefault(){blocked=true}});
+  assert.equal(blocked,false);h.node('#delivered-dialog').close();
+  assert.equal(select.value,'processing');assert.equal(h.calls.length,before);
+});
+
+test('Delivered confirmation saves once and prevents dismissal while saving',async()=>{
+  const h=harness();await vm.runInContext('loadOrders(0)',h.context);
+  const select={dataset:{orderStage:'25'},value:'completed',disabled:false};
+  await h.node('#orders-list').listeners.change({target:{closest:()=>select}});
+  let release,updates=0;h.context.fetch=()=>{updates++;return new Promise(resolve=>{release=resolve})};
+  const saving=h.node('#delivered-form').listeners.submit({preventDefault(){}});
+  await h.node('#delivered-form').listeners.submit({preventDefault(){}});
+  h.node('#delivered-cancel').listeners.click();
+  let blocked=false;h.node('#delivered-dialog').listeners.cancel({preventDefault(){blocked=true}});
+  assert.equal(blocked,true);assert.equal(h.node('#delivered-dialog').open,true);
+  assert.equal(h.node('#delivered-save').disabled,true);assert.equal(updates,1);
+  release(Response.json({fulfillmentStatus:'completed',deliveryNotification:{status:'pending',attempts:0}}));await saving;
+  assert.equal(select.value,'completed');assert.equal(select.disabled,false);
+  assert.equal(h.node('#delivered-dialog').open,false);assert.equal(h.node('#delivered-save').disabled,false);
+});
+
+test('failed Delivered save keeps the previous stage and allows a safe retry',async()=>{
+  const h=harness();await vm.runInContext('loadOrders(0)',h.context);
+  const select={dataset:{orderStage:'25'},value:'completed',disabled:false};
+  await h.node('#orders-list').listeners.change({target:{closest:()=>select}});
+  h.context.fetch=async()=>Response.json({error:'Order changed. Refresh orders.'},{status:409});
+  await h.node('#delivered-form').listeners.submit({preventDefault(){}});
+  assert.equal(select.value,'processing');assert.equal(select.disabled,false);
+  assert.equal(h.node('#delivered-dialog').open,true);assert.match(h.node('#delivered-error').textContent,/Order changed/);
+  assert.equal(h.node('#delivered-save').disabled,false);
+});
+
+test('a delayed close event cannot discard a freshly reopened Delivered dialog',async()=>{
+  const h=harness();await vm.runInContext('loadOrders(0)',h.context);
+  const select={dataset:{orderStage:'25'},value:'completed',disabled:false};
+  await h.node('#orders-list').listeners.change({target:{closest:()=>select}});
+  h.node('#delivered-cancel').listeners.click();select.value='completed';
+  await h.node('#orders-list').listeners.change({target:{closest:()=>select}});
+  h.node('#delivered-dialog').listeners.close();
+  await h.node('#delivered-form').listeners.submit({preventDefault(){}});
+  assert.equal(select.value,'completed');assert.equal(h.calls.filter(c=>c.action==='admin_update_fulfillment').length,1);
 });
 
 test('guest website orders show their order recipient without relying on a trusted bot name',()=>{

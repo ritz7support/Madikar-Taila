@@ -1,5 +1,13 @@
 # Madikar Taila — project analysis starting point
 
+## 18 October owner tests and admin feedback — latest checkpoint
+
+Published: same public Site version 39, source 2e1091a80e32da5421fb2c76bb20d9ce153b706f; deployment appgdep_6ad4b5af9f6881918c93177dc6d92662 succeeded. Supabase function versions/hashes/auth settings remain unchanged.
+
+Read docs/plans/OWNER_TEST_AUDIT_2026-10-18.md. Four new WhatsApp carts pass exact pack/price/weight/shipping/payment-link checks; website unpaid cancellation, one Delivered notification and the current Meta stock sync are verified. The owner-requested unused test profile and hidden Auth identity were removed with guards and unchanged unrelated-data fingerprints. Tests 1–3 and fresh-number registration remain pending.
+
+Website changes centre Resume secure payment, replace the Delivered browser alert with a styled dialog, and add accessible success/error toasts after admin writes. Queued work is distinguished from Meta acceptance. 122 automated tests and desktop/mobile mocked browser checks pass. No Edge Functions, pricing, shipping policy, catalog mapping or security settings changed. See the report for publication provenance; older checkpoints below remain historical.
+
 ## 18 October review fixes — latest checkpoint
 
 Published: same public Site version 38, source 45b4f88f7bfcf7fc34e450ed6bb19e11042567d0; deployment appgdep_6ad443cdd9688191a87c23e044d2e7c3 succeeded.

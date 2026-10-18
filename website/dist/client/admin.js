@@ -1,7 +1,7 @@
 const $ = selector => document.querySelector(selector);
 const escapeHtml = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const money = value => '₹' + Number(value || 0).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2});
-const state = {config:null,token:null,products:[],orders:[],ordersPage:0,ordersSource:null,ordersLoadedAt:0,hasMore:false,orderLoading:false,ordersLoaded:false,shipment:null,selectedId:null,editing:null};
+const state = {config:null,token:null,products:[],orders:[],ordersPage:0,ordersSource:null,ordersLoadedAt:0,hasMore:false,orderLoading:false,ordersLoaded:false,shipment:null,delivery:null,selectedId:null,editing:null};
 let ordersRequest=0;
 const accessStorageKey = 'madikar-admin-access';
 const validToken = value => /^[A-Za-z0-9_-]{43}$/.test(value || '');
@@ -11,15 +11,53 @@ const setStatus = (message,tone='note',target='#dashboard-status') => {
 function resetOrders(){ordersRequest++;Object.assign(state,{orders:[],ordersPage:0,ordersSource:null,ordersLoadedAt:0,hasMore:false,orderLoading:false,ordersLoaded:false});$('#orders-list').innerHTML='';}
 function saveToken(token){resetOrders();state.token=token;sessionStorage.setItem(accessStorageKey,token)}
 function clearToken(){resetOrders();state.token=null;sessionStorage.removeItem(accessStorageKey)}
+let toastTimer;
+function hideToast(){clearTimeout(toastTimer);$('#admin-toast').hidden=true}
+function showToast(message,tone='success'){
+  clearTimeout(toastTimer);
+  $('#admin-toast-message').textContent=message;
+  const toast=$('#admin-toast');toast.dataset.tone=tone;toast.hidden=false;
+  toastTimer=setTimeout(hideToast,7000);
+}
+$('#admin-toast-close').addEventListener('click',hideToast);
+$('#admin-toast').addEventListener('mouseenter',()=>clearTimeout(toastTimer));
+$('#admin-toast').addEventListener('focusin',()=>clearTimeout(toastTimer));
+$('#admin-toast').addEventListener('mouseleave',()=>{clearTimeout(toastTimer);toastTimer=setTimeout(hideToast,7000)});
+$('#admin-toast').addEventListener('focusout',()=>{clearTimeout(toastTimer);toastTimer=setTimeout(hideToast,7000)});
+const adminWrites=new Set(['admin_save_product','admin_add_product','admin_save_variant','admin_upload_image','admin_product_availability','admin_retry_stock_sync','admin_update_fulfillment','admin_retry_delivery_notification','admin_retry_shipment_notification']);
+function notificationFeedback(note){
+  if(['pending','sending'].includes(note?.status))return ' WhatsApp message queued.';
+  if(note?.status==='sent')return ' Message accepted by WhatsApp.';
+  if(['failed','uncertain'].includes(note?.status))return ' The WhatsApp message needs attention; check its status below.';
+  if(note?.status==='cancelled')return ' The WhatsApp message is cancelled.';
+  return '';
+}
+function savedFeedback(action,body,data){
+  if(action==='admin_update_fulfillment'){
+    const stage=data.fulfillmentStatus;
+    const label={processing:'Processing',shipped:'Shipped',completed:'Delivered',cancelled:'Cancelled'}[stage];
+    return 'Order '+(label?'marked '+label:'saved')+'.'+notificationFeedback(stage==='completed'?data.deliveryNotification:stage==='shipped'?data.shipmentNotification:null);
+  }
+  if(action==='admin_retry_delivery_notification'||action==='admin_retry_shipment_notification')return 'Notification request saved.'+notificationFeedback(data.deliveryNotification||data.shipmentNotification);
+  return {admin_save_product:'Product details saved.',admin_add_product:'Hidden product draft created. Add a photo and pack before listing it.',
+    admin_save_variant:'Pack details saved. Check Meta availability beside the pack.',admin_upload_image:'Photo uploaded. Save the product to display it.',
+    admin_product_availability:'Stock availability saved. Check Meta sync beside each pack.',admin_retry_stock_sync:'Meta sync retry queued.'}[action];
+}
 async function adminApi(action,body={}){
-  if(!validToken(state.token))throw new Error('Enter a valid team access code.');
-  const response=await fetch('/api/admin',{
-    method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+state.token},
-    body:JSON.stringify({action,...body})
-  });
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw Object.assign(new Error(data.error || 'The dashboard request failed.'),{status:response.status});
-  return data;
+  try{
+    if(!validToken(state.token))throw new Error('Enter a valid team access code.');
+    const response=await fetch('/api/admin',{
+      method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+state.token},
+      body:JSON.stringify({action,...body})
+    });
+    const data=await response.json();
+    if(!response.ok)throw Object.assign(new Error(data.error || 'The dashboard request failed.'),{status:response.status});
+    if(adminWrites.has(action))showToast(savedFeedback(action,body,data));
+    return data;
+  }catch(error){
+    if(adminWrites.has(action))showToast(error.status&&error.status<500?error.message:'Save not confirmed. Check the current details before trying again.','error');
+    throw error;
+  }
 }
 function showDashboard(label){
   $('#login-panel').hidden=true;$('#dashboard').hidden=false;$('#sign-out').hidden=false;$('#copy-admin-link').hidden=false;
@@ -379,9 +417,6 @@ function openShipmentDialog(order,select){
 }
 async function updateOrderStage(order,select,stage,trackingId,estimatedDeliveryDays){
   const previous=order.fulfillment_status || 'processing';
-  if(stage==='completed'&&previous!=='completed'&&!confirm(`Mark ${order.reference_id} as Delivered? This also requests a WhatsApp delivery message if one has not already been sent.`)){
-    select.value=previous;return;
-  }
   select.disabled=true;
   try{
     const data=await adminApi('admin_update_fulfillment',{id:order.id,status:stage,previousStatus:previous,...(stage==='shipped'?{trackingId,estimatedDeliveryDays}:{})});
@@ -408,7 +443,31 @@ $('#orders-list').addEventListener('change',async event=>{
     openShipmentDialog(order,select);
     return;
   }
+  if(select.value==='completed'&&previous!=='completed'){
+    select.value=previous;
+    openDeliveredDialog(order,select);
+    return;
+  }
   try{await updateOrderStage(order,select,select.value)}catch(error){setStatus(error.message,'error')}
+});
+function openDeliveredDialog(order,select){
+  state.delivery={order,select,saving:false};
+  $('#delivered-order-reference').textContent=order.reference_id;
+  $('#delivered-error').textContent='';
+  $('#delivered-dialog').showModal();$('#delivered-cancel').focus();
+}
+$('#delivered-cancel').addEventListener('click',()=>{if(!state.delivery?.saving)$('#delivered-dialog').close()});
+$('#delivered-dialog').addEventListener('cancel',event=>{if(state.delivery?.saving)event.preventDefault()});
+$('#delivered-dialog').addEventListener('close',()=>{if(!$('#delivered-dialog').open)state.delivery=null});
+$('#delivered-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const delivery=state.delivery;if(!delivery||delivery.saving)return;
+  delivery.saving=true;$('#delivered-save').textContent='Saving…';
+  $('#delivered-error').textContent='';
+  $('#delivered-save').disabled=true;$('#delivered-cancel').disabled=true;
+  try{await updateOrderStage(delivery.order,delivery.select,'completed');$('#delivered-dialog').close()}
+  catch(error){$('#delivered-error').textContent=error.message}
+  finally{delivery.saving=false;$('#delivered-save').textContent='Mark Delivered';$('#delivered-save').disabled=false;$('#delivered-cancel').disabled=false}
 });
 $('#shipping-cancel').addEventListener('click',()=>{if(!state.shipment?.saving)$('#shipping-dialog').close()});
 $('#shipping-dialog').addEventListener('cancel',event=>{if(state.shipment?.saving)event.preventDefault()});
