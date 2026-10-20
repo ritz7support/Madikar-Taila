@@ -1,5 +1,11 @@
 # Website checkout — updated 20 October 2026
 
+## 20 October Razorpay notification setting experiment
+
+The owner requested that new website Payment Links omit the `notify` property, as WhatsApp-created links do. The previous `notify:{sms:false,email:false}` override is removed; `reminder_enable:false` remains. No other request fields or payment/confirmation behavior changed. Existing payment links retain their original settings.
+
+Only `madikar-store` was deployed, as version 23, with all eight source files verified and unchanged authentication. All other functions are unchanged, the 130-test suite and bundle check pass, and live website checkout config remains ready in live Payment Links mode with weight shipping. No frontend publication or schema change is needed. This is an owner-requested receipt experiment, not a verified delivery fix: use a new website checkout for the next test. No payment was created and no customer message was sent during validation.
+
 ## 20 October closed-browser fixes
 
 Read `../docs/plans/PAYMENT_BROWSER_AUDIT_2026-10-20.md`. The registered Razorpay endpoint now forwards signed website Payment Link paid events to the existing website verifier, awaiting verified finalization before acknowledging. The observed six-minute delay came from ignoring this event and falling back to recovery. Recovery remains a fallback, not a browser requirement. HMAC, exact provider membership/amount/currency and atomic finalization stay intact.

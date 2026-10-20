@@ -29,7 +29,7 @@ export function createWebsitePaymentLinks({razorpay,patch,rpc,background,work}){
     const payload={amount:s.total_paise,currency:'INR',accept_partial:false,
       expire_by:Math.floor(Date.parse(s.expires_at)/1000),reference_id:linkReference(s),description:'Madikar Taila website order',
       customer:{name:s.customer.name,contact:'+'+s.phone,...(s.customer.email?{email:s.customer.email}:{})},
-      notify:{sms:false,email:false},reminder_enable:false,
+      reminder_enable:false,
       notes:{website_session:s.id,source:'madikar_website'},
       callback_url:'https://madikartaila.com/?payment=return',callback_method:'get',
       options:{checkout:{method:{upi:1,card:0,netbanking:0,wallet:0}}}};

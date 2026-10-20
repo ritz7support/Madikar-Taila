@@ -34,11 +34,11 @@ function fixture(){
   const paid=()=>{Object.assign(state.link,{status:'paid',amount_paid:44000,payments:[{payment_id:'pay_fixture',amount:44000,status:'captured'}]});};
   return {s,state,service,paid};
 }
-test('standard UPI-only link uses unique reference and fixed website return; no automatic SMS/email',async()=>{
+test('standard UPI-only link uses unique reference and fixed website return; notifications left to Razorpay',async()=>{
   const f=fixture(),result=await f.service.create(f.s);assert.equal(result.paymentUrl,'https://rzp.io/i/fixture');assert.equal(result.paymentMethod,'payment_link');
   const payload=JSON.parse(f.state.calls[0].options.body);
   assert.deepEqual(payload.options,{checkout:{method:{upi:1,card:0,netbanking:0,wallet:0}}});
-  assert.equal(payload.accept_partial,false);assert.deepEqual(payload.notify,{sms:false,email:false});assert.equal(payload.reminder_enable,false);
+  assert.equal(payload.accept_partial,false);assert.equal(Object.hasOwn(payload,'notify'),false);assert.equal(payload.reminder_enable,false);
   assert.equal(payload.callback_url,'https://madikartaila.com/?payment=return');assert.equal(payload.callback_method,'get');
   assert.equal(payload.reference_id.length,35);assert.equal(payload.amount,44000);
   assert.equal(JSON.stringify(result).includes('Fixture'),false);assert.deepEqual(await f.service.prepared(f.s),result);assert.equal(f.state.creates,1);

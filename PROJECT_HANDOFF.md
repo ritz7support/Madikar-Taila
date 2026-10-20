@@ -1,5 +1,11 @@
 # Madikar Taila — project analysis starting point
 
+## 20 October Razorpay notification settings — latest checkpoint
+
+At the owner's request, new website Payment Links now omit `notify`, matching the WhatsApp bot's omission of SMS/email notification flags. Only the explicit `notify:{sms:false,email:false}` was removed. `reminder_enable:false`, customer details, amounts, shipping, UPI-only methods, verification and custom WhatsApp confirmations remain unchanged. Existing links are not edited or resent. Omission leaves notification behavior to Razorpay; it does not establish that a post-payment receipt will arrive.
+
+Deployed only `madikar-store`, now version 23; all eight deployed source files match the intended source and authentication settings are unchanged. All other function versions/hashes/auth settings match the prior checkpoint. All 130 automated tests and the function bundle check pass. The live website checkout config returns 200, ready, live, Payment Links and weight shipping enabled. Site version 40 needs no frontend publication for this backend-only change. No database migration/data edit, live payment, customer send or historical replay was performed. Test with a newly created website link; receipt delivery remains to be confirmed by the owner.
+
 ## 20 October website payment audit — latest checkpoint
 
 Read `docs/plans/PAYMENT_BROWSER_AUDIT_2026-10-20.md`. Owner-confirmed website order 209 was recorded about 6m39s late because the registered Razorpay webhook ignored its website reference; recovery finalized it. The signed website paid event now forwards to the existing website verifier and waits for verification. Browser checkout identity persists across closed tabs and cart consumption is atomic/idempotent across tabs.
