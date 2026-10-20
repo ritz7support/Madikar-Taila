@@ -5,18 +5,35 @@ import {readFileSync} from 'node:fs';
 import {setImmediate} from 'node:timers/promises';
 import worker from '../server/worker-template.js';
 const source=readFileSync(new URL('../dist/client/checkout.js',import.meta.url),'utf8');
-function browser({session=null,path='/',reply={status:'pending'}}={}){
-  const nodes=new Map(),storage=new Map(),requests=[],navigation=[],consumed=[],timers=[];
-  if(session)storage.set('madikar-checkout-session',JSON.stringify(session));
+function browser({session=null,path='/',reply={status:'pending'},persistent=null,legacy=false}={}){
+  const nodes=new Map(),storage=persistent||new Map(),legacyStorage=new Map(),requests=[],navigation=[],consumed=[],timers=[];
+  if(session)(legacy?legacyStorage:storage).set('madikar-checkout-session',JSON.stringify(session));
   const node=selector=>{if(!nodes.has(selector))nodes.set(selector,{hidden:selector==='#checkout-success',dataset:{},style:{},classList:{add(){},remove(){}},setAttribute(){},focus(){},listeners:{},addEventListener(event,handler){this.listeners[event]=handler},elements:{name:{focus(){}}}});return nodes.get(selector)};
   const location={search:new URL(path,'https://store.test').search,assign:path=>navigation.push(path)};
   const context=vm.createContext({window:{MADIKAR_STORE:{money:String,cartEntries:()=>[],closeCart(){},consumeCart:lines=>consumed.push(lines)},location},location,
     document:{querySelector:node,body:{style:{}},addEventListener(){},activeElement:null},history:{replaceState:(_s,_t,path)=>navigation.push(path)},URLSearchParams,AbortSignal,setTimeout:fn=>timers.push(fn),
-    sessionStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
+    localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
+    sessionStorage:{getItem:key=>legacyStorage.get(key)||null,setItem:(key,value)=>legacyStorage.set(key,value),removeItem:key=>legacyStorage.delete(key)},
     fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return Response.json(typeof reply==='function'?reply(requests.length):reply)}});
   vm.runInContext(source,context);return {node,requests,navigation,consumed,storage,timers,context};
 }
 const saved={sessionId:crypto.randomUUID(),token:'a'.repeat(64),lines:[{id:'p1',variant:0,quantity:1}]};
+test('closing a tab retains checkout identity, and reopening checks the server before clearing the bag',async()=>{
+  const first=browser({session:{...saved,confirming:true,paymentMethod:'payment_link'}});
+  await setImmediate();
+  assert.equal(first.consumed.length,0);
+  const reopened=browser({persistent:first.storage,reply:{status:'paid',reference:'ORD-reopen',paymentId:'pay_fixture',mode:'live'}});
+  await setImmediate();
+  assert.deepEqual(reopened.requests[0].body,{sessionId:saved.sessionId,token:saved.token});
+  assert.equal(reopened.consumed.length,1);
+  const third=browser({persistent:first.storage,reply:{status:'paid',reference:'ORD-reopen',paymentId:'pay_fixture',mode:'live'}});
+  await setImmediate();assert.equal(third.consumed.length,0);
+});
+test('an existing tab migrates its old session storage checkout',async()=>{
+  const p=browser({session:saved,legacy:true});await setImmediate();
+  assert.equal(JSON.parse(p.storage.get('madikar-checkout-session')).sessionId,saved.sessionId);
+  assert.equal(p.requests.length,1);assert.equal(p.consumed.length,0);
+});
 test('typing payment=true without a session cannot show a confirmation',async()=>{
   const page=browser({path:'/?payment=true'});await setImmediate();assert.equal(page.node('#checkout-success').hidden,true);assert.equal(page.requests.length,0);assert.equal(page.consumed.length,0);
 });
@@ -44,7 +61,7 @@ test('overlapping verification and status responses consume one session only onc
  const page=browser({session:saved,reply:result});await setImmediate();
  assert.equal(page.consumed.length,1);page.node('#checkout-done').listeners.click();
  const navigations=page.navigation.length;
- assert.equal(vm.runInContext('showPaid('+JSON.stringify(result)+','+JSON.stringify(saved)+')',page.context),true);
+ assert.equal(await vm.runInContext('showPaid('+JSON.stringify(result)+','+JSON.stringify(saved)+')',page.context),true);
  assert.equal(page.consumed.length,1);assert.equal(page.navigation.length,navigations);assert.equal(page.storage.has('madikar-checkout-session'),false);
 });
 

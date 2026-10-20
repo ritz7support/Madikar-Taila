@@ -233,7 +233,7 @@ export function createCheckoutService({database,env,fetch:fetcher=fetch,backgrou
       if(!s&&uuid.test(link.notes?.website_session||'')) [s]=await db('/rest/v1/store_checkout_sessions?select=*&id=eq.'+link.notes.website_session+'&limit=1');
       if(!s)return {ok:true,ignored:true};
       if(!modes.includes(s.mode))fail('Invalid payment mode.',401);
-      if(s.status!=='paid')await reconcile(s);
+      if(s.status!=='paid'&&(await reconcile(s)).status!=='paid')fail('Payment verification is still pending.',503);
       background(work(s.id));return {ok:true};
     }
     const p=event.payload?.payment?.entity,orderId=p?.order_id||event.payload?.order?.entity?.id;

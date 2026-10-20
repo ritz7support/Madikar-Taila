@@ -7,6 +7,20 @@ import vm from 'node:vm';
 
 const source=stripTypeScriptTypes(readFileSync(new URL('../../supabase/functions/whatsapp-flow/index.ts',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,''));
 const secret='fixture-flow-secret',appSecret='fixture-meta-secret',phone='919000000001';
+test('delivery diagnostics retain status and error code without message IDs, recipients or error text',async()=>{
+  const bot=stripTypeScriptTypes(readFileSync(new URL('../../supabase/functions/whatsapp-webhook/index.ts',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,''));
+  const logs=[];const context=vm.createContext({Deno:{env:{get:()=> 'fixture'},serve(){}},crypto:webcrypto,TextEncoder,
+    console:{log:(...args)=>logs.push(args)}});
+  vm.runInContext(bot+';globalThis.statuses=logMessageStatuses;',context);
+  await context.statuses([{id:'wamid.PRIVATE_RECIPIENT',recipient_id:phone,status:'failed',errors:[{code:131049,message:'PRIVATE_ERROR'}]},
+    {id:'wamid.PRIVATE_RECIPIENT',status:'delivered'},{id:'invalid',status:'read'},{id:'wamid.x',status:'unknown'}]);
+  assert.equal(logs.length,2);
+  assert.equal(JSON.parse(logs[0][1]).error_code,131049);
+  assert.equal(JSON.parse(logs[1][1]).status,'delivered');
+  assert.match(JSON.parse(logs[0][1]).message_hash,/^[a-f0-9]{64}$/);
+  assert.equal(JSON.parse(logs[0][1]).message_hash,JSON.parse(logs[1][1]).message_hash);
+  assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|919000000001/);
+});
 function token(prefix,parts,expiry=Math.floor(Date.now()/1000)+300){
   const raw=[prefix,...parts,crypto.randomUUID(),expiry].join(':');
   return raw+':'+createHmac('sha256',secret).update(raw).digest('hex');

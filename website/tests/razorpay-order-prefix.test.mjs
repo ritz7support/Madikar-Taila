@@ -9,13 +9,14 @@ const source=stripTypeScriptTypes(readFileSync(new URL('../../supabase/functions
 function fixture(mode='live'){
   const state={calls:[],rpc:[],messages:[],handoffs:[],pending:[],payment:{id:7,order_id:9,status:'pending',amount:1,provider_payment_link_reference_id:'ORD-fixture',provider_payment_link_id:'plink_fixture'},order:{source:'whatsapp',id:9,reference_id:'ORD-fixture',total:1,status:'pending_payment',whatsapp_user_id:'919000000001'}};
   const env={SUPABASE_URL:'https://db.example.test',SUPABASE_SERVICE_ROLE_KEY:'fixture',RAZORPAY_MODE:mode,RAZORPAY_LIVE_WEBHOOK_SECRET:'live-fixture',RAZORPAY_TEST_WEBHOOK_SECRET:'test-fixture',WHATSAPP_ACCESS_TOKEN:'fixture'};
-  const sandbox={crypto:webcrypto,TextEncoder,Response,Request,URL,Date,setTimeout,console:{log(){},warn(){},error(){}},
+  const sandbox={crypto:webcrypto,TextEncoder,Response,Request,URL,Date,setTimeout,AbortSignal,console:{log(){},warn(){},error(){}},
     Deno:{env:{get:k=>env[k]},serve:handler=>{state.handler=handler;}},EdgeRuntime:{waitUntil:p=>state.pending.push(p)},
     deliverOrderHandoff:async id=>{state.handoffs.push(id);return 'sent';},
     fetch:async(url,options={})=>{
       const u=new URL(url),table=u.pathname.split('/').at(-1),method=options.method||'GET',body=options.body&&JSON.parse(options.body);state.calls.push({url:String(url),method,body});
       if(u.hostname==='graph.facebook.com'){state.messages.push(body);return Response.json({messages:[{id:'wamid.fixture'}]});}
       assert.equal(u.hostname,'db.example.test');
+      if(u.pathname==='/functions/v1/madikar-store/razorpay-webhook'){state.forwarded={raw:options.body,headers:options.headers};return Response.json(state.forwardResult||{ok:true},{status:state.forwardStatus||200});}
       if(table==='payments'){
         if(method==='GET'){assert.equal(u.searchParams.get('orders.source'),'eq.whatsapp');assert.match(u.searchParams.get('select'),/orders!inner\(source\)/);if(state.order.source!=='whatsapp')return Response.json([]);}
         if(method==='PATCH'){Object.assign(state.payment,body);return new Response(null,{status:204});}
@@ -40,6 +41,24 @@ function fixture(mode='live'){
 function event({paymentOrderId='order_ABC123',entityOrderId='ABC123',amount=100,event='payment_link.paid'}={}){
   return {event,payload:{payment:{entity:{id:'pay_fixture',order_id:paymentOrderId,amount,currency:'INR'}},order:{entity:{id:entityOrderId}},payment_link:{entity:{id:'plink_fixture',reference_id:'ORD-fixture',amount_paid:amount,currency:'INR'}}}};
 }
+
+test('signed website payment forwards original bytes and signature without bot writes or messages',async()=>{
+  for(const mode of ['live','test']){
+    const f=fixture(mode),body=event();body.payload.payment_link.entity.reference_id='WEB'+'a'.repeat(32);
+    assert.equal((await f.send(body)).status,200);
+    assert.equal(f.state.forwarded.raw,JSON.stringify(body));
+    assert.equal(f.state.forwarded.headers['x-razorpay-signature'],createHmac('sha256',mode+'-fixture').update(JSON.stringify(body)).digest('hex'));
+    assert.equal(f.state.rpc.length,0);assert.equal(f.state.messages.length,0);assert.equal(f.state.payment.status,'pending');
+  }
+});
+test('website verification failures are not acknowledged and unsigned events are never forwarded',async()=>{
+  for(const config of [{forwardStatus:503},{forwardResult:{ok:true,ignored:true}},{forwardResult:{ok:false}}]){
+    const f=fixture(),body=event();body.payload.payment_link.entity.reference_id='WEB'+'b'.repeat(32);Object.assign(f.state,config);
+    assert.equal((await f.send(body)).status,500);assert.equal(f.state.rpc.length,0);assert.equal(f.state.messages.length,0);
+  }
+  const f=fixture(),body=event();body.payload.payment_link.entity.reference_id='WEB'+'c'.repeat(32);
+  assert.equal((await f.send(body,{signature:false})).status,401);assert.equal(f.state.calls.length,0);
+});
 
 test('signed live/test payment events store the canonical ID and preserve paid flow and duplicate handling',async()=>{
   for(const mode of ['live','test']){

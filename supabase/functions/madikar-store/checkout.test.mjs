@@ -190,6 +190,12 @@ test('a pack marked out of stock is rejected before any payment order is created
   await f.service.webhook(event,mac('test-hook',event));await f.service.webhook(event,mac('test-hook',event));assert.equal(f.state.finalized,1);
   assert.equal((await f.service.status(b)).status,'paid');await f.flush();
  });
+ test('a paid webhook remains retryable until provider verification confirms capture',async()=>{
+  const f=fixture({paymentMethod:'payment_link',weightShipping:true}),b={...body(),expectedAmountPaise:39000};await f.service.create(b);
+  const raw=JSON.stringify({event:'payment_link.paid',payload:{payment_link:{entity:{id:'plink_fixture'}}}});
+  await assert.rejects(f.service.webhook(raw,mac('test-hook',raw)),error=>error.status===503);
+  assert.equal(f.state.finalized,0);
+ });
  test('weight-based quote rejects missing weights before profiles, links or orders',async()=>{
   const f=fixture({paymentMethod:'payment_link',weightShipping:true,catalogVariants:[{id:10,product_id:1,size:'1 L',price:300,availability_status:'available',inventory_quantity:null,shipping_weight_grams:null}]}),b=body();
   await assert.rejects(f.service.preview({lines:b.lines}),/weight is missing/);

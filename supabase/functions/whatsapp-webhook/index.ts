@@ -650,6 +650,18 @@ async function handleAddressFlowCompletion(waId:string,data:any){
 }
 
 
+async function logMessageStatuses(statuses:any[]){
+  for(const status of statuses){
+    if(!['sent','delivered','read','failed'].includes(status?.status)||typeof status.id!=='string'||!status.id.startsWith('wamid.'))continue;
+    // A wamid can encode its recipient. Log only a SHA-256 correlation hash.
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(status.id));
+    const messageHash=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    const errorCode=Number(status.errors?.[0]?.code);
+    console.log('WhatsApp delivery status:',JSON.stringify({message_hash:messageHash,status:status.status,
+      error_code:Number.isSafeInteger(errorCode)&&errorCode>0?errorCode:null}));
+  }
+}
+
 Deno.serve(async(req:Request)=>{
   if(req.method==="GET"){
     const u=new URL(req.url);
@@ -672,6 +684,7 @@ Deno.serve(async(req:Request)=>{
     for(const entry of body?.entry??[]){
       for(const change of entry?.changes??[]){
         if(change?.field!=="messages"||!isExpectedWebhook(change))continue;
+        if(Array.isArray(change?.value?.statuses))await logMessageStatuses(change.value.statuses);
         for(const m of change?.value?.messages??[]){
           const waId=m.from;
           if(!waId)continue;

@@ -7,7 +7,7 @@ import {setImmediate} from 'node:timers/promises';
 const source = readFileSync(new URL('../dist/client/app.js',import.meta.url),'utf8');
 const product = {id:'p1',slug:'groundnut-oil',name:'Groundnut Oil',category:'Oils',note:'Wood-pressed groundnut oil',image:'',variants:[{size:'500 ml',price:175,available:true,orderable:true}]};
 
-function page(replies,path='/'){
+function page(replies,path='/',storage=new Map(),locks=null){
   const elements = new Map();
   const element = selector => {
     if (!elements.has(selector)) elements.set(selector,{
@@ -27,7 +27,7 @@ function page(replies,path='/'){
   const context = vm.createContext({
     document:{title:'Madikar Taila',body:{classList:{toggle(){}}},querySelector:element,getElementById:()=>({scrollIntoView(){}}),addEventListener(){}},
     window:{addEventListener(){},scrollTo(){}},location,history:{replaceState:navigate,pushState:navigate},
-    localStorage:{getItem(){return null}},URL,URLSearchParams,AbortSignal,
+    localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},navigator:{locks},URL,URLSearchParams,AbortSignal,
     setTimeout(resolve,delay){delays.push(delay);queueMicrotask(resolve)},
     fetch:async (url,options) => {
       assert.equal(url,'/api/catalog');
@@ -41,7 +41,7 @@ function page(replies,path='/'){
     }
   });
   vm.runInContext(source,context);
-  return {context,element,delays,calls:()=>calls};
+  return {context,element,delays,storage,calls:()=>calls};
 }
 async function settled(page){
   for(let i=0;i<30;i++){
@@ -52,6 +52,32 @@ async function settled(page){
 }
 const ok = () => Response.json({products:[product]});
 const failure = () => Response.json({error:'temporarily unavailable'},{status:503});
+
+test('paid cart removal survives reopening, preserves extra items, and is atomic across two tabs',async()=>{
+  const storage=new Map([['madikar-cart',JSON.stringify({'p1:0':5,'p2:1':3})]]);
+  let tail=Promise.resolve();
+  const locks={request:(_name,fn)=>{const next=tail.then(fn);tail=next.catch(()=>{});return next}};
+  const a=page([ok()],'/',storage,locks),b=page([ok()],'/',storage,locks);
+  await Promise.all([settled(a),settled(b)]);
+  const consume=p=>vm.runInContext("window.MADIKAR_STORE.consumeCart([{id:'p1',variant:0,quantity:2}],'session-one')",p.context);
+  await Promise.all([consume(a),consume(b)]);
+  const cart=JSON.parse(storage.get('madikar-cart'));
+  assert.equal(cart['p1:0'],3);assert.equal(cart['p2:1'],3);assert.equal(cart.__paidCheckouts['session-one'],true);
+  const reopened=page([ok()],'/',storage,locks);await settled(reopened);await consume(reopened);
+  assert.equal(JSON.parse(storage.get('madikar-cart'))['p1:0'],3);
+  assert.equal(vm.runInContext('cartEntries().length',reopened.context),1,'completion metadata is not a product');
+});
+
+test('paid-cart write failure retains the bag and permits a safe retry',async()=>{
+  const p=page([ok()]);await settled(p);
+  p.storage.set('madikar-cart',JSON.stringify({'p1:0':2}));
+  const write=p.context.localStorage.setItem;p.context.localStorage.setItem=()=>{throw Error('Storage unavailable')};
+  await assert.rejects(vm.runInContext("window.MADIKAR_STORE.consumeCart([{id:'p1',variant:0,quantity:2}],'session-two')",p.context),/Storage/);
+  assert.equal(JSON.parse(p.storage.get('madikar-cart'))['p1:0'],2);
+  p.context.localStorage.setItem=write;
+  await vm.runInContext("window.MADIKAR_STORE.consumeCart([{id:'p1',variant:0,quantity:2}],'session-two')",p.context);
+  assert.equal(JSON.parse(p.storage.get('madikar-cart'))['p1:0'],undefined);
+});
 
 test('a temporary backend failure recovers and renders product info',async () => {
   const p=page([failure(),ok()]); await settled(p);

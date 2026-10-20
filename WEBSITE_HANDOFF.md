@@ -1,5 +1,11 @@
 # Madikar Taila website handoff — 17 October 2026
 
+## 20 October payment correction — latest checkpoint
+
+Read `docs/plans/PAYMENT_BROWSER_AUDIT_2026-10-20.md`. Same public Site version 40 is published from `2eed834673b4d42151e9ab739d45190f6ccd69c2`; deployment `appgdep_6ad724f18d0c81919244549ee981f27b` succeeded. Website paid webhooks are forwarded by the registered Razorpay endpoint to the existing verifier, removing the observed dependence on recovery. Checkout identity survives tab closure; cart completion is idempotent across tabs.
+
+Functions are `madikar-store` 22, `razorpay-webhook` 37 and `whatsapp-webhook` 98, all with complete source parity and unchanged signature protections. WhatsApp status diagnostics distinguish later delivery/failure from acceptance using hashes and error codes. The old missing receipt's exact failure remains unknown; no resend occurred. 130 tests and desktop/mobile browser checks passed, live assets/config match, existing data fingerprints are unchanged. This checkpoint supersedes older version/webhook-registration statements below.
+
 ## 18 October owner tests and admin feedback — latest checkpoint
 
 Published: same public Site version 39, source 2e1091a80e32da5421fb2c76bb20d9ce153b706f; deployment appgdep_6ad4b5af9f6881918c93177dc6d92662 succeeded.

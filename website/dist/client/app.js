@@ -31,7 +31,16 @@ let catalogState = 'loading';
 let catalogLoading = false;
 let catalogVerifiedAt=0;
 try{state.cart=JSON.parse(localStorage.getItem('madikar-cart')||'{}')||{}}catch{}
-const saveCart=()=>{try{localStorage.setItem('madikar-cart',JSON.stringify(state.cart))}catch{}};
+function readCart(){try{return JSON.parse(localStorage.getItem('madikar-cart')||'{}')||{}}catch{return {}}}
+async function updateCart(change){
+  const commit=()=>{
+    const cart=readCart();change(cart);
+    // Purchased quantities and their completion marker are one atomic write.
+    localStorage.setItem('madikar-cart',JSON.stringify(cart));state.cart=cart;renderCart();
+  };
+  if(globalThis.navigator?.locks)return navigator.locks.request('madikar-cart',commit);
+  return commit();
+}
 const variantsOf=p=>p.variants;
 const selectedVariant=p=>variantsOf(p)[state.selection[p.id]||0];
 const availabilityLabel=v=>v.orderable===false?'Out of stock':v.available===true?'In stock':'Confirm availability';
@@ -69,7 +78,7 @@ function renderCart(){
   $('#cart-items').innerHTML=entries.length?entries.map(e=>`<div class="cart-item" data-key="${escapeXml(e.key)}"><div class="cart-thumb branded-photo"><img src="${escapeXml(imageFor(e.p))}" alt="" class="${e.p.imageAlt ? 'supplied-product-image' : ''}">${e.p.imageAlt ? '' : '<img class="brand-stamp" src="/assets/brand-stamp.svg" alt="" aria-hidden="true">'}</div><div><h3>${escapeXml(e.p.name)}</h3><small>${escapeXml(e.v.size)}${e.v.orderable===false?' · Out of stock':''}</small><div class="qty-controls"><button type="button" data-qty="-1" aria-label="Remove one ${escapeXml(e.p.name)}">−</button><span>${e.qty}</span><button type="button" data-qty="1" aria-label="Add one ${escapeXml(e.p.name)}" ${e.v.orderable===false?'disabled':''}>+</button></div></div><strong>${money(e.qty*e.v.price)}</strong></div>`).join(''):'<div class="cart-empty"><strong>Your bag is waiting.</strong><p>Add something lovely from the collection.</p></div>';
   $('#checkout-open').disabled=!entries.length||entries.some(e=>e.v.orderable===false)||catalogState!=='ready';
 }
-async function addToCart(p,index){if(Date.now()-catalogVerifiedAt>30000)await loadCatalog(true);p=products.find(item=>item.id===p.id);if(catalogState!=='ready'||!p?.variants[index]||p.variants[index].orderable===false)return;const key=`${p.id}:${index}`;state.cart[key]=(state.cart[key]||0)+1;saveCart();renderCart();openCart()}
+async function addToCart(p,index){if(Date.now()-catalogVerifiedAt>30000)await loadCatalog(true);p=products.find(item=>item.id===p.id);if(catalogState!=='ready'||!p?.variants[index]||p.variants[index].orderable===false)return;const key=`${p.id}:${index}`;await updateCart(cart=>{cart[key]=(cart[key]||0)+1});openCart()}
 function openCart(){$('#drawer-overlay').hidden=false;$('#cart-drawer').classList.add('open');$('#cart-drawer').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';$('#cart-close').focus()}
 function closeCart(){$('#drawer-overlay').hidden=true;$('#cart-drawer').classList.remove('open');$('#cart-drawer').setAttribute('aria-hidden','true');document.body.style.overflow=''}
 const detailText = text => escapeXml(text).replaceAll('\n','<br>');
@@ -114,7 +123,7 @@ $('#sort-select').addEventListener('change',e=>{state.sort=e.target.value;render
 $('#search-open').addEventListener('click',()=>{navigateStore('/#shop');$('#search-input').focus()});
 $('#clear-filters').addEventListener('click',()=>{state.category='All products';state.query='';$('#search-input').value='';renderCategories();renderProducts()});
 $('#cart-open').addEventListener('click',openCart);$('#cart-close').addEventListener('click',closeCart);$('#drawer-overlay').addEventListener('click',closeCart);
-$('#cart-items').addEventListener('click',e=>{const b=e.target.closest('[data-qty]');if(!b)return;const key=b.closest('[data-key]').dataset.key;if(Number(b.dataset.qty)>0&&cartEntries().find(e=>e.key===key)?.v.orderable===false)return;state.cart[key]=(state.cart[key]||0)+Number(b.dataset.qty);if(state.cart[key]<=0)delete state.cart[key];saveCart();renderCart()});
+$('#cart-items').addEventListener('click',async e=>{const b=e.target.closest('[data-qty]');if(!b)return;const key=b.closest('[data-key]').dataset.key;if(Number(b.dataset.qty)>0&&cartEntries().find(e=>e.key===key)?.v.orderable===false)return;await updateCart(cart=>{cart[key]=(cart[key]||0)+Number(b.dataset.qty);if(cart[key]<=0)delete cart[key]})});
 $('#product-page').addEventListener('change',e=>{if(e.target.id==='detail-variant'&&state.detail){state.selection[state.detail]=Number(e.target.value);const v=selectedVariant(byId(state.detail));$('#detail-price').textContent=money(v.price);$('#detail-availability').textContent=availabilityLabel(v);$('#detail-add').disabled=v.orderable===false;renderProducts()}});
 $('#product-page').addEventListener('click',async e=>{
   if(e.target.closest('[data-action="retry-catalog"]')) void loadCatalog();
@@ -143,9 +152,14 @@ document.addEventListener('click',event=>{
   navigateStore(url.href);
 });
 window.addEventListener('popstate',renderRoute);
-window.addEventListener('storage',event=>{if(event.key==='madikar-catalog-changed')void loadCatalog(true)});
+window.addEventListener('storage',event=>{if(event.key==='madikar-catalog-changed')void loadCatalog(true);if(event.key==='madikar-cart'){state.cart=readCart();renderCart()}});
 window.addEventListener('focus',()=>{if(Date.now()-catalogVerifiedAt>30000)void loadCatalog(true)});
-window.MADIKAR_STORE={cartEntries,closeCart,navigate:navigateStore,consumeCart(lines){for(const line of lines||[]){const key=line.id+":"+line.variant;const remaining=(state.cart[key]||0)-line.quantity;if(remaining>0)state.cart[key]=remaining;else delete state.cart[key]}saveCart();renderCart()},clearCart(){state.cart={};saveCart();renderCart()},money};
+window.MADIKAR_STORE={cartEntries,closeCart,navigate:navigateStore,consumeCart(lines,sessionId){return updateCart(cart=>{
+  const completed=cart.__paidCheckouts||{};
+  if(completed[sessionId])return;
+  for(const line of lines||[]){const key=line.id+":"+line.variant;const remaining=(cart[key]||0)-line.quantity;if(remaining>0)cart[key]=remaining;else delete cart[key]}
+  cart.__paidCheckouts={...completed,[sessionId]:true};
+})},clearCart(){return updateCart(cart=>{for(const key of Object.keys(cart))if(key!=='__paidCheckouts')delete cart[key]})},money};
 renderCategories();renderProducts();renderCart();renderRoute();
 async function requestCatalog(){
   // Only retry the read-only catalog request; never replay checkout operations.

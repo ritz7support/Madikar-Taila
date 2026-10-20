@@ -2,13 +2,24 @@ const checkout=window.MADIKAR_STORE;
 const checkoutForm=document.querySelector('#shipping-form'),checkoutStatus=document.querySelector('#checkout-status'),payButton=document.querySelector('#razorpay-pay');
 const sessionKey='madikar-checkout-session';
 let paymentConfig={ready:false,shippingPaise:null},lastCheckoutFocus=null,busy=false,confirmed=false,lastPaidSessionId=null,quoteRequest=0;
+const paidCartUpdates=new Map();
 const inr=checkout.money;
 const cartLines=()=>checkout.cartEntries().map(({key,qty})=>{const[id,variant]=key.split(':');return{id,variant:Number(variant),quantity:qty}});
 const setStatus=(message,tone='note')=>{checkoutStatus.textContent=message;checkoutStatus.dataset.tone=tone;checkoutStatus.hidden=!message};
 const addressFromForm=()=>{const data=new FormData(checkoutForm);return Object.fromEntries(['name','phone','email','line1','line2','city','state','postalCode','country'].map(key=>[key,String(data.get(key)||'').trim()]))};
 const subtotalPaise=()=>checkout.cartEntries().reduce((sum,{qty,v})=>sum+Math.round(qty*v.price*100),0);
-const readSession=()=>{try{return JSON.parse(sessionStorage.getItem(sessionKey)||'null')}catch{return null}};
-const saveSession=session=>sessionStorage.setItem(sessionKey,JSON.stringify(session));
+// Keep the checkout capability across closed tabs, just as the bag persists.
+// No address, phone, payment URL or provider credentials are stored here.
+const readSession=()=>{try{
+  const current=localStorage.getItem(sessionKey);
+  if(current)return JSON.parse(current);
+  const legacy=sessionStorage.getItem(sessionKey);
+  if(!legacy)return null;
+  localStorage.setItem(sessionKey,legacy);sessionStorage.removeItem(sessionKey);
+  return JSON.parse(legacy);
+}catch{return null}};
+const saveSession=session=>{localStorage.setItem(sessionKey,JSON.stringify(session));sessionStorage.removeItem(sessionKey)};
+const clearSession=sessionId=>{if(sessionId&&readSession()?.sessionId!==sessionId)return;localStorage.removeItem(sessionKey);sessionStorage.removeItem(sessionKey)};
 const identity=session=>({sessionId:session.sessionId,token:session.token});
 function renderCheckoutSummary(){
   const subtotal=subtotalPaise();
@@ -41,7 +52,7 @@ function openCheckout(){
 }
 function closeCheckout(){
   if(confirmed){
-    sessionStorage.removeItem(sessionKey);confirmed=false;
+    clearSession(lastPaidSessionId);confirmed=false;
     document.querySelector('#checkout-overlay').hidden=true;document.querySelector('#checkout-modal').classList.remove('open');
     document.querySelector('#checkout-modal').setAttribute('aria-hidden','true');document.body.style.overflow='';
     if(checkout.navigate)checkout.navigate('/',{replace:true});else window.location.assign('/');return;
@@ -64,14 +75,14 @@ async function jsonPost(url,body){
 async function prepareSession(lines,address){
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({lines,address})));
   const fingerprint=[...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');let session=readSession();
-  if(session?.confirming)throw new Error('Your earlier payment is being confirmed. Please refresh to check it before paying again.');
+  if(session?.confirming||(session?.paymentMethod==='payment_link'&&session.requested))throw new Error('Your earlier payment is being confirmed. Please refresh to check it before paying again.');
   if(!session||session.fingerprint!==fingerprint){
     session={sessionId:crypto.randomUUID(),token:[...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join(''),fingerprint,lines};
     // Save before any server write; a timeout must reuse the same payment order.
-    try{saveSession(session)}catch{throw new Error('Please allow session storage in your browser to continue securely.')}
+    try{saveSession(session)}catch{throw new Error('Please allow browser storage to continue securely.')}
   }return session;
 }
-function showPaid(result,session){
+async function showPaid(result,session){
   if(result.status!=='paid')return false;
   // Verification and a reopened status view may finish together. Display and
   // consume each session once, even if those requests hold separate copies.
@@ -80,7 +91,12 @@ function showPaid(result,session){
   if(saved?.sessionId===session.sessionId&&saved.cartConsumed)session.cartConsumed=true;
   document.querySelector('#checkout-modal').classList.remove('payment-confirming');
   document.querySelector('#checkout-confirming').hidden=true;
-  if(!session.cartConsumed){checkout.consumeCart(session.lines);session.cartConsumed=true;saveSession(session)}
+  if(!session.cartConsumed){
+    if(!paidCartUpdates.has(session.sessionId))paidCartUpdates.set(session.sessionId,Promise.resolve().then(()=>checkout.consumeCart(session.lines,session.sessionId)).catch(error=>{paidCartUpdates.delete(session.sessionId);throw error}));
+    await paidCartUpdates.get(session.sessionId);session.cartConsumed=true;
+    if(readSession()?.sessionId===session.sessionId)saveSession(session);
+  }
+  if(lastPaidSessionId===session.sessionId)return true;
   lastPaidSessionId=session.sessionId;confirmed=true;busy=false;showModal();checkoutForm.hidden=true;document.querySelector('#payment-reference').textContent=result.reference+' · '+result.paymentId;
   document.querySelector('#checkout-modal').classList.add('payment-confirmed');document.querySelector('#checkout-modal').setAttribute('aria-labelledby','checkout-success-title');
   document.querySelector('#checkout-success h3').textContent=result.mode==='test'?'Test payment received':'Payment received';
@@ -103,13 +119,13 @@ async function checkPayment(session){
   catch(error){
     if(error.status!==404||session.paymentMethod!=='payment_link')throw error;
     if(readSession()?.sessionId!==session.sessionId)return true;
-    if(readSession()?.sessionId===session.sessionId)sessionStorage.removeItem(sessionKey);
+    clearSession(session.sessionId);
     busy=false;closeCheckout();openCheckout();setStatus('The earlier checkout was not created. Please review your total and try again.');return true;
   }
   if(readSession()?.sessionId!==session.sessionId)return true;
-  if(showPaid(result,session))return true;
+  if(await showPaid(result,session))return true;
   if(['cancelled','expired','failed'].includes(result.status)){
-    if(readSession()?.sessionId===session.sessionId)sessionStorage.removeItem(sessionKey);
+    clearSession(session.sessionId);
     busy=false;closeCheckout();openCheckout();setStatus('The earlier payment link is '+result.status+'. Review your total before starting a new payment.');return true;
   }
   paymentLinkControls(result,session);return false;
@@ -143,9 +159,10 @@ async function waitForConfirmation(session){
 checkoutForm.addEventListener('submit',async event=>{
   event.preventDefault();if(busy||!checkoutForm.reportValidity())return;
   if(!paymentConfig.ready)return setStatus('Online payment has not been enabled yet.','error');
-  const lines=cartLines(),address=addressFromForm();busy=true;renderCheckoutSummary();setStatus('Preparing your secure payment…');
+  const lines=cartLines(),address=addressFromForm();let attemptedSessionId=null;busy=true;renderCheckoutSummary();setStatus('Preparing your secure payment…');
   try{
     const session=await prepareSession(lines,address);
+    attemptedSessionId=session.sessionId;
     if(paymentConfig.paymentMethod==='payment_link'){session.paymentMethod='payment_link';session.requested=true;saveSession(session);}
     const expectedAmountPaise=paymentConfig.amountPaise??subtotalPaise()+paymentConfig.shippingPaise;
     const order=await jsonPost('/api/checkout/order',{...identity(session),lines,address,expectedAmountPaise});
@@ -173,7 +190,7 @@ checkoutForm.addEventListener('submit',async event=>{
         session.confirming=true;saveSession(session);confirmingView();
         try{
           const result=await jsonPost('/api/checkout/verify',{...identity(session),orderId:order.orderId,paymentId:payment.razorpay_payment_id,signature:payment.razorpay_signature});
-          if(showPaid(result,session))return;
+          if(await showPaid(result,session))return;
         }catch{/* Status reconciliation uses the saved session, never a new payment. */}
         await waitForConfirmation(session);
       }
@@ -181,7 +198,7 @@ checkoutForm.addEventListener('submit',async event=>{
     razorpay.on('payment.failed',response=>setStatus(response.error?.description||'Payment was not completed. You can retry in the payment window.','error'));
     razorpay.open();setStatus('Complete your payment in the secure Razorpay window.');
   }catch(error){
-    if(/checkout expired|Payment link creation was rejected|Your checkout total changed/.test(error.message))sessionStorage.removeItem(sessionKey);
+    if(attemptedSessionId&&/checkout expired|Payment link creation was rejected|Your checkout total changed/.test(error.message))clearSession(attemptedSessionId);
     busy=false;renderCheckoutSummary();setStatus(error.message,'error');
     if(/Your checkout total changed/.test(error.message))void loadPaymentConfig();
   }
@@ -206,9 +223,10 @@ document.querySelector('#payment-cancel')?.addEventListener('click',async()=>{
   const button=document.querySelector('#payment-cancel');button.disabled=true;
   try{
     const result=await jsonPost('/api/checkout/cancel',identity(s));
-    if(showPaid(result,s))return;
+    if(readSession()?.sessionId!==s.sessionId)return;
+    if(await showPaid(result,s))return;
     if(!['cancelled','expired','failed'].includes(result.status))throw new Error('Payment is still being checked. Try again shortly.');
-    sessionStorage.removeItem(sessionKey);busy=false;closeCheckout();openCheckout();
+    clearSession(s.sessionId);busy=false;closeCheckout();openCheckout();
   }catch(error){document.querySelector('#confirmation-progress').textContent=error.message}
   finally{button.disabled=false}
 });

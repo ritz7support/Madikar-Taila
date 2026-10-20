@@ -1,5 +1,13 @@
 # Madikar Taila — project analysis starting point
 
+## 20 October website payment audit — latest checkpoint
+
+Read `docs/plans/PAYMENT_BROWSER_AUDIT_2026-10-20.md`. Owner-confirmed website order 209 was recorded about 6m39s late because the registered Razorpay webhook ignored its website reference; recovery finalized it. The signed website paid event now forwards to the existing website verifier and waits for verification. Browser checkout identity persists across closed tabs and cart consumption is atomic/idempotent across tabs.
+
+Meta accepted the missing website confirmation once, but the old handler discarded delivery statuses. Its actual handset delivery/failure remains unknown. New verified status diagnostics log only a message-ID hash, status and numeric error code. No historical resend occurred. The owner reports new-number/Hi works; the guest Profile remains unregistered until its WhatsApp registration completes.
+
+Published same public Site version 40, Sites source `2eed834673b4d42151e9ab739d45190f6ccd69c2`, deployment `appgdep_6ad724f18d0c81919244549ee981f27b` succeeded. Functions `madikar-store` 22, `razorpay-webhook` 37 and `whatsapp-webhook` 98 match local source; other functions/auth settings unchanged. 130 tests, desktop/mobile closed-tab/two-tab browser tests, live assets/config and unsigned rejection checks pass. Catalog/profile/order/item/payment fingerprints match. No schema/data mutation, real payment, event replay or customer send was used. A new real receipt delivery check remains necessary.
+
 ## 18 October owner tests and admin feedback — latest checkpoint
 
 Published: same public Site version 39, source 2e1091a80e32da5421fb2c76bb20d9ce153b706f; deployment appgdep_6ad4b5af9f6881918c93177dc6d92662 succeeded. Supabase function versions/hashes/auth settings remain unchanged.

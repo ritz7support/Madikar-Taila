@@ -1,4 +1,12 @@
-# Website checkout — updated 17 October 2026
+# Website checkout — updated 20 October 2026
+
+## 20 October closed-browser fixes
+
+Read `../docs/plans/PAYMENT_BROWSER_AUDIT_2026-10-20.md`. The registered Razorpay endpoint now forwards signed website Payment Link paid events to the existing website verifier, awaiting verified finalization before acknowledging. The observed six-minute delay came from ignoring this event and falling back to recovery. Recovery remains a fallback, not a browser requirement. HMAC, exact provider membership/amount/currency and atomic finalization stay intact.
+
+Checkout identity persists across closed tabs; paid cart quantities are removed once with an atomic completion marker and cross-tab locking. Existing open sessions migrate. An already-lost old tab's identity cannot be recovered from cart contents.
+
+Website receipt acceptance is not handset delivery. The missing receipt for order 209 was accepted by Meta but its later delivery status was not retained. Verified Meta status callbacks now log a correlation hash/status/error code for diagnosis. Template format and send/retry rules are unchanged; no historical resend was made. n8n remains retired. Older checkpoints below are history where superseded.
 
 ## 18 October review fixes — latest checkpoint
 
